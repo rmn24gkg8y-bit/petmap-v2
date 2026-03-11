@@ -47,6 +47,7 @@ export default function TabOneScreen() {
     addSpot,
     updateSpot,
     removeSpot,
+    submitSpotForReview,
     setSelectedSpot,
     setUserLoc,
     clearSelectedSpot,
@@ -198,6 +199,7 @@ export default function TabOneScreen() {
         id: `user-spot-${Date.now()}`,
         name,
         source: 'user' as const,
+        submissionStatus: 'local' as const,
         district,
         addressHint,
         lat: pendingCoords.lat,
@@ -253,6 +255,19 @@ export default function TabOneScreen() {
         onPress: () => removeSpot(selectedSpot.id),
       },
     ]);
+  }
+
+  function handleSubmitForReview() {
+    if (
+      !selectedSpot ||
+      selectedSpot.source !== 'user' ||
+      selectedSpot.submissionStatus === 'pending_review'
+    ) {
+      return;
+    }
+
+    submitSpotForReview(selectedSpot.id);
+    Alert.alert('提交成功', '该地点已进入待审核状态');
   }
 
   return (
@@ -317,6 +332,11 @@ export default function TabOneScreen() {
             <Text style={styles.sourceBadge}>
               {selectedSpot.source === 'user' ? '我添加的' : '系统收录'}
             </Text>
+            {selectedSpot.source === 'user' ? (
+              <Text style={styles.statusText}>
+                状态：{selectedSpot.submissionStatus === 'pending_review' ? '待审核' : '仅本机保存'}
+              </Text>
+            ) : null}
             <Text style={styles.meta}>
               {selectedSpot.district} · {selectedSpot.addressHint}
             </Text>
@@ -336,6 +356,14 @@ export default function TabOneScreen() {
               <Pressable onPress={clearSelectedSpot} style={styles.secondaryButton}>
                 <Text style={styles.secondaryButtonText}>清空选择</Text>
               </Pressable>
+
+              {selectedSpot.source === 'user' && selectedSpot.submissionStatus !== 'pending_review' ? (
+                <Pressable
+                  onPress={handleSubmitForReview}
+                  style={styles.secondaryButton}>
+                  <Text style={styles.secondaryButtonText}>提交审核</Text>
+                </Pressable>
+              ) : null}
 
               {selectedSpot.source === 'user' ? (
                 <Pressable onPress={handleEditSpot} style={styles.secondaryButton}>
@@ -610,6 +638,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 14,
     color: '#6B7280',
+  },
+  statusText: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
   },
   sourceBadge: {
     alignSelf: 'flex-start',

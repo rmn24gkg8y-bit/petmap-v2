@@ -43,6 +43,7 @@ type PetMapStoreValue = {
   addSpot: (spot: Spot) => void;
   updateSpot: (spot: Spot) => void;
   removeSpot: (id: string) => void;
+  submitSpotForReview: (id: string) => void;
   setSelectedSpot: (id: string) => void;
   clearSelectedSpot: () => void;
   toggleFavorite: (id: string) => void;
@@ -88,7 +89,13 @@ export function PetMapProvider({ children }: PropsWithChildren) {
 
       setFavoriteIds(storedFavoriteIds);
       setRecentViewedIds(storedRecentViewedIds);
-      setUserCreatedSpots(storedUserCreatedSpots);
+      setUserCreatedSpots(
+        storedUserCreatedSpots.map((spot) =>
+          spot.source === 'user' && spot.submissionStatus === undefined
+            ? { ...spot, submissionStatus: 'local' }
+            : spot
+        )
+      );
       setHasHydratedStorage(true);
     }
 
@@ -219,6 +226,17 @@ export function PetMapProvider({ children }: PropsWithChildren) {
         setSelectedSpotId((current) => (current === id ? null : current));
         setFavoriteIds((current) => current.filter((item) => item !== id));
         setRecentViewedIds((current) => current.filter((item) => item !== id));
+      },
+      submitSpotForReview: (id: string) => {
+        setUserCreatedSpots((current) =>
+          current.map((spot) =>
+            spot.id === id &&
+            spot.source === 'user' &&
+            (spot.submissionStatus === undefined || spot.submissionStatus === 'local')
+              ? { ...spot, submissionStatus: 'pending_review' }
+              : spot
+          )
+        );
       },
       setSelectedSpot: (id: string) => {
         setSelectedSpotId(id);
