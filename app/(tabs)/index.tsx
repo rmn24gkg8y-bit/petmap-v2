@@ -1,16 +1,20 @@
 import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Animated,
   Modal,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import * as Location from 'expo-location';
+import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -26,12 +30,14 @@ const INITIAL_REGION: Region = {
 
 export default function TabOneScreen() {
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const mapRef = useRef<MapView | null>(null);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [editingSpotId, setEditingSpotId] = useState<string | null>(null);
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
   const [pendingCoords, setPendingCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [formError, setFormError] = useState('');
+  const [sheetVisibleHeight, setSheetVisibleHeight] = useState(136 + insets.bottom);
   const [formValues, setFormValues] = useState({
     name: '',
     district: '',
@@ -44,6 +50,7 @@ export default function TabOneScreen() {
     favoriteCount,
     spots,
     selectedSpot,
+    userSpots,
     addSpot,
     updateSpot,
     removeSpot,
@@ -54,6 +61,28 @@ export default function TabOneScreen() {
     toggleFavorite,
     isFavorite,
   } = usePetMapStore();
+
+  const expandedSheetHeight = Math.min(Math.max(windowHeight * 0.5, 360), windowHeight * 0.72);
+  const collapsedSheetHeight = 136 + insets.bottom;
+  const collapsedOffset = Math.max(expandedSheetHeight - collapsedSheetHeight, 0);
+  const quickActionsBottom = Math.max(sheetVisibleHeight + 16, insets.bottom + 120);
+  const sheetTranslateY = useRef(new Animated.Value(collapsedOffset)).current;
+  const dragStartRef = useRef(collapsedOffset);
+  const sheetOffsetRef = useRef(collapsedOffset);
+  const sheetVisibleHeightRef = useRef(collapsedSheetHeight);
+
+  useEffect(() => {
+    const listenerId = sheetTranslateY.addListener(({ value }) => {
+      sheetOffsetRef.current = value;
+      const nextVisibleHeight = expandedSheetHeight - value;
+      sheetVisibleHeightRef.current = nextVisibleHeight;
+      setSheetVisibleHeight(nextVisibleHeight);
+    });
+
+    return () => {
+      sheetTranslateY.removeListener(listenerId);
+    };
+  }, [expandedSheetHeight, sheetTranslateY]);
 
   useEffect(() => {
     let isMounted = true;
@@ -88,23 +117,94 @@ export default function TabOneScreen() {
     };
   }, [setUserLoc]);
 
-  useEffect(() => {
+  function recenterSelectedSpot(duration = 350) {
     if (!selectedSpot || !mapRef.current) {
       return;
     }
 
-    mapRef.current.animateToRegion(
+    mapRef.current.animateCamera(
       {
-        latitude: selectedSpot.lat,
-        longitude: selectedSpot.lng,
-        latitudeDelta: 0.03,
-        longitudeDelta: 0.03,
+        center: {
+          latitude: selectedSpot.lat,
+          longitude: selectedSpot.lng,
+        },
+        zoom: 15,
       },
-      350
+      { duration }
     );
-  }, [selectedSpot]);
+  }
 
-  function handleLongPress({ nativeEvent }: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) {
+  function animateSheet(toValue: number) {
+    Animated.spring(sheetTranslateY, {
+      toValue,
+      useNativeDriver: true,
+      bounciness: 0,
+      speed: 18,
+    }).start(({ finished }) => {
+      if (finished && selectedSpot) {
+        recenterSelectedSpot(250);
+      }
+    });
+  }
+
+  useEffect(() => {
+    animateSheet(selectedSpot ? 0 : collapsedOffset);
+  }, [collapsedOffset, selectedSpot]);
+
+  useEffect(() => {
+    const nextHeight = selectedSpot ? expandedSheetHeight : collapsedSheetHeight;
+    sheetVisibleHeightRef.current = nextHeight;
+    setSheetVisibleHeight(nextHeight);
+  }, [collapsedSheetHeight, expandedSheetHeight, selectedSpot]);
+
+  useEffect(() => {
+    if (!selectedSpot) {
+      return;
+    }
+
+    recenterSelectedSpot();
+  }, [selectedSpot, sheetVisibleHeight]);
+
+  const sheetPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) => Math.abs(gestureState.dy) > 6,
+        onPanResponderGrant: () => {
+          sheetTranslateY.stopAnimation((value) => {
+            dragStartRef.current = value;
+          });
+        },
+        onPanResponderMove: (_, gestureState) => {
+          const nextValue = dragStartRef.current + gestureState.dy;
+          const clampedValue = Math.min(Math.max(nextValue, 0), collapsedOffset);
+
+          sheetTranslateY.setValue(clampedValue);
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          if (!selectedSpot) {
+            animateSheet(collapsedOffset);
+            return;
+          }
+
+          const shouldExpand =
+            gestureState.vy < -0.2 ||
+            sheetOffsetRef.current < collapsedOffset * 0.45 ||
+            gestureState.dy < -40;
+
+          animateSheet(shouldExpand ? 0 : collapsedOffset);
+        },
+        onPanResponderTerminate: () => {
+          animateSheet(selectedSpot ? 0 : collapsedOffset);
+        },
+      }),
+    [collapsedOffset, selectedSpot, sheetTranslateY]
+  );
+
+  function handleLongPress({
+    nativeEvent,
+  }: {
+    nativeEvent: { coordinate: { latitude: number; longitude: number } };
+  }) {
     setModalMode('create');
     setEditingSpotId(null);
     setPendingCoords({
@@ -270,164 +370,228 @@ export default function TabOneScreen() {
     Alert.alert('提交成功', '该地点已进入待审核状态');
   }
 
+  function getQuickActionBadgeCount(count: number) {
+    return count > 99 ? '99+' : String(count);
+  }
+
   return (
     <View style={styles.container}>
-      <View style={styles.mapSection}>
-        <MapView
-          ref={mapRef}
-          style={styles.map}
-          initialRegion={INITIAL_REGION}
-          onLongPress={handleLongPress}
-          showsUserLocation>
-          {spots.map((spot) => {
-            const isSelected = selectedSpot?.id === spot.id;
+      <MapView
+        ref={mapRef}
+        style={styles.map}
+        initialRegion={INITIAL_REGION}
+        mapPadding={{
+          top: 0,
+          right: 0,
+          left: 0,
+          bottom: Math.max(sheetVisibleHeight - 24, 0),
+        }}
+        onLongPress={handleLongPress}
+        showsUserLocation>
+        {spots.map((spot) => {
+          const isSelected = selectedSpot?.id === spot.id;
 
-            return (
-              <Marker
-                key={spot.id}
-                coordinate={{ latitude: spot.lat, longitude: spot.lng }}
-                tracksViewChanges={false}
-                onPress={() => setSelectedSpot(spot.id)}>
-                <View style={styles.markerContainer}>
+          return (
+            <Marker
+              key={spot.id}
+              coordinate={{ latitude: spot.lat, longitude: spot.lng }}
+              tracksViewChanges={false}
+              onPress={() => setSelectedSpot(spot.id)}>
+              <View style={styles.markerContainer}>
+                <View
+                  style={[
+                    styles.markerPin,
+                    isSelected ? styles.markerPinSelected : styles.markerPinDefault,
+                  ]}>
                   <View
                     style={[
-                      styles.markerPin,
-                      isSelected ? styles.markerPinSelected : styles.markerPinDefault,
-                    ]}>
-                    <View
-                      style={[
-                        styles.markerCenter,
-                        isSelected ? styles.markerCenterSelected : styles.markerCenterDefault,
-                      ]}
-                    />
-                  </View>
-                  <View
-                    style={[
-                      styles.markerStem,
-                      isSelected ? styles.markerStemSelected : styles.markerStemDefault,
+                      styles.markerCenter,
+                      isSelected ? styles.markerCenterSelected : styles.markerCenterDefault,
                     ]}
                   />
                 </View>
-              </Marker>
-            );
-          })}
-        </MapView>
+                <View
+                  style={[
+                    styles.markerStem,
+                    isSelected ? styles.markerStemSelected : styles.markerStemDefault,
+                  ]}
+                />
+              </View>
+            </Marker>
+          );
+        })}
+      </MapView>
+
+      <View pointerEvents="box-none" style={[styles.quickActions, { bottom: quickActionsBottom }]}>
+        <Pressable onPress={() => router.push('/my-favorites')} style={styles.quickActionButton}>
+          <Ionicons name="star" size={19} color="#0F172A" />
+          <View style={styles.quickActionBadge}>
+            <Text style={styles.quickActionBadgeText}>
+              {getQuickActionBadgeCount(favoriteCount)}
+            </Text>
+          </View>
+        </Pressable>
+
+        <Pressable onPress={() => router.push('/my-spots')} style={styles.quickActionButton}>
+          <Ionicons name="location" size={19} color="#0F172A" />
+          <View style={styles.quickActionBadge}>
+            <Text style={styles.quickActionBadgeText}>
+              {getQuickActionBadgeCount(userSpots.length)}
+            </Text>
+          </View>
+        </Pressable>
       </View>
 
-      <ScrollView
-        style={styles.panel}
-        contentContainerStyle={[styles.panelContent, { paddingBottom: insets.bottom + 32 }]}
-        showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <Text style={styles.eyebrow}>地图总览</Text>
-          <Text style={styles.title}>PetMap</Text>
-          <Text style={styles.description}>查看宠物友好地点，并继续管理你的本地点位。</Text>
-          <View style={styles.statsRow}>
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>{totalSpots}</Text>
-              <Text style={styles.statLabel}>当前地点数</Text>
-            </View>
-            <Pressable onPress={() => router.push('/my-favorites')} style={styles.statCard}>
-              <Text style={styles.statValue}>{favoriteCount}</Text>
-              <Text style={styles.statLabel}>已收藏</Text>
-              <Text style={styles.statAction}>查看我的收藏</Text>
-            </Pressable>
-          </View>
+      <Animated.View
+        style={[
+          styles.sheet,
+          {
+            height: expandedSheetHeight,
+            paddingBottom: insets.bottom + 18,
+            transform: [{ translateY: sheetTranslateY }],
+          },
+        ]}>
+        <View style={styles.sheetHandleArea} {...sheetPanResponder.panHandlers}>
+          <View style={styles.sheetHandle} />
         </View>
 
-        {selectedSpot ? (
-          <View style={styles.card}>
-            <Text style={styles.cardLabel}>当前选中地点</Text>
-            <Text style={styles.cardTitle}>{selectedSpot.name}</Text>
-            <View style={styles.badgeRow}>
-              <Text
-                style={[
-                  styles.badge,
-                  selectedSpot.source === 'user' ? styles.userBadge : styles.systemBadge,
-                ]}>
-                {selectedSpot.source === 'user' ? '我添加的' : '系统收录'}
-              </Text>
-              {selectedSpot.source === 'user' ? (
+        <ScrollView
+          style={styles.sheetScroll}
+          contentContainerStyle={styles.sheetContent}
+          showsVerticalScrollIndicator={false}>
+          {selectedSpot ? (
+            <View style={styles.card}>
+              <Text style={styles.cardLabel}>当前选中地点</Text>
+              <Text style={styles.spotTitle}>{selectedSpot.name}</Text>
+              <View style={styles.badgeRow}>
                 <Text
                   style={[
                     styles.badge,
-                    selectedSpot.submissionStatus === 'pending_review'
-                      ? styles.pendingBadge
-                      : styles.localBadge,
+                    selectedSpot.source === 'user' ? styles.userBadge : styles.systemBadge,
                   ]}>
-                  {selectedSpot.submissionStatus === 'pending_review' ? '待审核' : '仅本机保存'}
+                  {selectedSpot.source === 'user' ? '我添加的' : '系统收录'}
                 </Text>
-              ) : null}
-            </View>
-            <Text style={styles.metaText}>
-              {selectedSpot.district} · {selectedSpot.addressHint}
-            </Text>
-            {selectedSpot.tags.length > 0 ? (
-              <View style={styles.tagRow}>
-                {selectedSpot.tags.map((tag) => (
-                  <Text key={tag} style={styles.tagChip}>
-                    {tag}
+                {selectedSpot.source === 'user' ? (
+                  <Text
+                    style={[
+                      styles.badge,
+                      selectedSpot.submissionStatus === 'pending_review'
+                        ? styles.pendingBadge
+                        : styles.localBadge,
+                    ]}>
+                    {selectedSpot.submissionStatus === 'pending_review' ? '待审核' : '仅本机保存'}
                   </Text>
-                ))}
+                ) : null}
               </View>
-            ) : null}
-            <Text style={styles.cardDescription}>{selectedSpot.description}</Text>
-            <View style={styles.detailMetaRow}>
-              <Text style={styles.detailMetaLabel}>热度</Text>
-              <Text style={styles.votes}>{selectedSpot.votes} votes</Text>
-            </View>
+              <Text style={styles.spotMetaText}>
+                {selectedSpot.district} · {selectedSpot.addressHint}
+              </Text>
+              {selectedSpot.tags.length > 0 ? (
+                <View style={styles.tagRow}>
+                  {selectedSpot.tags.map((tag) => (
+                    <Text key={tag} style={styles.tagChip}>
+                      {tag}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+              <View style={styles.photoSection}>
+                <View style={styles.photoSectionHeader}>
+                  <Text style={styles.photoSectionTitle}>图片预览</Text>
+                  <Text style={styles.photoSectionHint}>即将支持</Text>
+                </View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.photoRow}>
+                  {[1, 2, 3].map((item) => (
+                    <View key={item} style={styles.photoPlaceholderCard}>
+                      <Text style={styles.photoPlaceholderIcon}>+</Text>
+                      <Text style={styles.photoPlaceholderText}>未来可展示地点图片</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+              <Text style={styles.cardDescription}>
+                {selectedSpot.description || '暂无地点简介，后续可以继续补充。'}
+              </Text>
+              <View style={styles.detailMetaRow}>
+                <Text style={styles.detailMetaLabel}>热度</Text>
+                <Text style={styles.votes}>{selectedSpot.votes} votes</Text>
+              </View>
 
-            <View style={styles.actions}>
-              <Pressable
-                onPress={() => toggleFavorite(selectedSpot.id)}
-                style={styles.primaryActionButton}>
-                <Text style={styles.primaryActionText}>
-                  {isFavorite(selectedSpot.id) ? '已收藏' : '收藏'}
+              <View style={styles.actions}>
+                <Pressable
+                  onPress={() => toggleFavorite(selectedSpot.id)}
+                  style={styles.primaryActionButton}>
+                  <Text style={styles.primaryActionText}>
+                    {isFavorite(selectedSpot.id) ? '已收藏' : '收藏'}
+                  </Text>
+                </Pressable>
+
+                <Pressable onPress={clearSelectedSpot} style={styles.secondaryButton}>
+                  <Text style={styles.secondaryButtonText}>清空选择</Text>
+                </Pressable>
+
+                {selectedSpot.source === 'user' &&
+                selectedSpot.submissionStatus !== 'pending_review' ? (
+                  <Pressable onPress={handleSubmitForReview} style={styles.secondaryButton}>
+                    <Text style={styles.secondaryButtonText}>提交审核</Text>
+                  </Pressable>
+                ) : null}
+
+                {selectedSpot.source === 'user' ? (
+                  <Pressable onPress={handleEditSpot} style={styles.secondaryButton}>
+                    <Text style={styles.secondaryButtonText}>编辑地点</Text>
+                  </Pressable>
+                ) : null}
+
+                {selectedSpot.source === 'user' ? (
+                  <Pressable onPress={handleDeleteSpot} style={styles.dangerButton}>
+                    <Text style={styles.dangerButtonText}>删除地点</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            </View>
+          ) : (
+            <View>
+              <View style={styles.header}>
+                <Text style={styles.eyebrow}>地图总览</Text>
+                <Text style={styles.title}>PetMap</Text>
+                <Text style={styles.description}>
+                  查看宠物友好地点，并继续管理你的本地点位。
                 </Text>
-              </Pressable>
+                <View style={styles.statsRow}>
+                  <View style={styles.statCard}>
+                    <Text style={styles.statValue}>{totalSpots}</Text>
+                    <Text style={styles.statLabel}>当前地点数</Text>
+                  </View>
+                  <Pressable onPress={() => router.push('/my-favorites')} style={styles.statCard}>
+                    <Text style={styles.statValue}>{favoriteCount}</Text>
+                    <Text style={styles.statLabel}>已收藏</Text>
+                    <Text style={styles.statAction}>查看我的收藏</Text>
+                  </Pressable>
+                </View>
+              </View>
 
-              <Pressable onPress={clearSelectedSpot} style={styles.secondaryButton}>
-                <Text style={styles.secondaryButtonText}>清空选择</Text>
-              </Pressable>
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptyTitle}>当前没有选中地点</Text>
+                <Text style={styles.emptyDescription}>
+                  可以先去 Explore 查看地点，或在地图上长按新增一个地点。
+                </Text>
 
-              {selectedSpot.source === 'user' && selectedSpot.submissionStatus !== 'pending_review' ? (
-                <Pressable
-                  onPress={handleSubmitForReview}
-                  style={styles.secondaryButton}>
-                  <Text style={styles.secondaryButtonText}>提交审核</Text>
-                </Pressable>
-              ) : null}
-
-              {selectedSpot.source === 'user' ? (
-                <Pressable onPress={handleEditSpot} style={styles.secondaryButton}>
-                  <Text style={styles.secondaryButtonText}>编辑地点</Text>
-                </Pressable>
-              ) : null}
-
-              {selectedSpot.source === 'user' ? (
-                <Pressable
-                  onPress={handleDeleteSpot}
-                  style={styles.dangerButton}>
-                  <Text style={styles.dangerButtonText}>删除地点</Text>
-                </Pressable>
-              ) : null}
+                <View style={styles.actions}>
+                  <Pressable
+                    onPress={() => router.navigate('/(tabs)/explore')}
+                    style={styles.primaryButton}>
+                    <Text style={styles.primaryButtonText}>前往 Explore</Text>
+                  </Pressable>
+                </View>
+              </View>
             </View>
-          </View>
-        ) : (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>当前没有选中地点</Text>
-            <Text style={styles.emptyDescription}>
-              可以先去 Explore 查看地点，或在地图上长按新增一个地点。
-            </Text>
-
-            <Pressable
-              onPress={() => router.navigate('/(tabs)/explore')}
-              style={styles.primaryButton}>
-              <Text style={styles.primaryButtonText}>前往 Explore</Text>
-            </Pressable>
-          </View>
-        )}
-      </ScrollView>
+          )}
+        </ScrollView>
+      </Animated.View>
 
       <Modal
         animationType="slide"
@@ -557,12 +721,46 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F9FAFB',
   },
-  mapSection: {
-    flex: 0.95,
-    minHeight: 260,
-  },
   map: {
     flex: 1,
+  },
+  quickActions: {
+    position: 'absolute',
+    right: 16,
+    gap: 10,
+  },
+  quickActionButton: {
+    width: 46,
+    height: 46,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.96)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
+  },
+  quickActionBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 999,
+    backgroundColor: '#2563EB',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  quickActionBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
   },
   markerContainer: {
     alignItems: 'center',
@@ -611,15 +809,6 @@ const styles = StyleSheet.create({
     height: 12,
     backgroundColor: '#2563EB',
   },
-  panel: {
-    flex: 1.05,
-  },
-  panelContent: {
-    padding: 20,
-  },
-  header: {
-    marginTop: 8,
-  },
   eyebrow: {
     fontSize: 12,
     fontWeight: '700',
@@ -647,7 +836,7 @@ const styles = StyleSheet.create({
   statCard: {
     flex: 1,
     borderRadius: 18,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'rgba(255, 255, 255, 0.94)',
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
@@ -667,11 +856,47 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#2563EB',
   },
+  sheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#111827',
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: -6 },
+    elevation: 12,
+  },
+  sheetHandleArea: {
+    alignItems: 'center',
+    paddingTop: 12,
+    paddingBottom: 10,
+  },
+  sheetHandle: {
+    width: 48,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: '#D1D5DB',
+  },
+  sheetScroll: {
+    flex: 1,
+  },
+  sheetContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+  },
+  header: {
+    paddingTop: 4,
+    paddingBottom: 8,
+  },
   emptyCard: {
-    marginTop: 24,
     borderRadius: 22,
     backgroundColor: '#FFFFFF',
-    padding: 20,
+    paddingTop: 8,
+    paddingBottom: 8,
   },
   emptyTitle: {
     fontSize: 22,
@@ -685,10 +910,10 @@ const styles = StyleSheet.create({
     color: '#6B7280',
   },
   card: {
-    marginTop: 24,
     borderRadius: 22,
     backgroundColor: '#FFFFFF',
-    padding: 20,
+    paddingTop: 8,
+    paddingBottom: 8,
   },
   cardLabel: {
     fontSize: 12,
@@ -700,6 +925,12 @@ const styles = StyleSheet.create({
   cardTitle: {
     marginTop: 8,
     fontSize: 28,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  spotTitle: {
+    marginTop: 8,
+    fontSize: 30,
     fontWeight: '800',
     color: '#111827',
   },
@@ -737,6 +968,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6B7280',
   },
+  spotMetaText: {
+    marginTop: 12,
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#6B7280',
+  },
   tagRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -751,6 +988,49 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#2563EB',
+  },
+  photoSection: {
+    marginTop: 18,
+  },
+  photoSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  photoSectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  photoSectionHint: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  photoRow: {
+    gap: 12,
+    paddingTop: 12,
+    paddingBottom: 2,
+  },
+  photoPlaceholderCard: {
+    width: 152,
+    height: 110,
+    borderRadius: 18,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  photoPlaceholderIcon: {
+    fontSize: 24,
+    fontWeight: '300',
+    color: '#9CA3AF',
+  },
+  photoPlaceholderText: {
+    marginTop: 10,
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'center',
+    color: '#6B7280',
   },
   cardDescription: {
     marginTop: 12,
