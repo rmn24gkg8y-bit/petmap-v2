@@ -319,30 +319,62 @@ export default function TabOneScreen() {
         contentContainerStyle={[styles.panelContent, { paddingBottom: insets.bottom + 32 }]}
         showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
+          <Text style={styles.eyebrow}>地图总览</Text>
           <Text style={styles.title}>PetMap</Text>
-          <Text style={styles.description}>地图页开发中</Text>
-          <Text style={styles.count}>当前已有 {totalSpots} 个地点</Text>
-          <Text style={styles.count}>当前已收藏 {favoriteCount} 个地点</Text>
+          <Text style={styles.description}>查看宠物友好地点，并继续管理你的本地点位。</Text>
+          <View style={styles.statsRow}>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>{totalSpots}</Text>
+              <Text style={styles.statLabel}>当前地点数</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>{favoriteCount}</Text>
+              <Text style={styles.statLabel}>已收藏</Text>
+            </View>
+          </View>
         </View>
 
         {selectedSpot ? (
           <View style={styles.card}>
             <Text style={styles.cardLabel}>当前选中地点</Text>
             <Text style={styles.cardTitle}>{selectedSpot.name}</Text>
-            <Text style={styles.sourceBadge}>
-              {selectedSpot.source === 'user' ? '我添加的' : '系统收录'}
-            </Text>
-            {selectedSpot.source === 'user' ? (
-              <Text style={styles.statusText}>
-                状态：{selectedSpot.submissionStatus === 'pending_review' ? '待审核' : '仅本机保存'}
+            <View style={styles.badgeRow}>
+              <Text
+                style={[
+                  styles.badge,
+                  selectedSpot.source === 'user' ? styles.userBadge : styles.systemBadge,
+                ]}>
+                {selectedSpot.source === 'user' ? '我添加的' : '系统收录'}
               </Text>
-            ) : null}
-            <Text style={styles.meta}>
+              {selectedSpot.source === 'user' ? (
+                <Text
+                  style={[
+                    styles.badge,
+                    selectedSpot.submissionStatus === 'pending_review'
+                      ? styles.pendingBadge
+                      : styles.localBadge,
+                  ]}>
+                  {selectedSpot.submissionStatus === 'pending_review' ? '待审核' : '仅本机保存'}
+                </Text>
+              ) : null}
+            </View>
+            <Text style={styles.metaText}>
               {selectedSpot.district} · {selectedSpot.addressHint}
             </Text>
-            <Text style={styles.tags}>{selectedSpot.tags.join(' · ')}</Text>
+            {selectedSpot.tags.length > 0 ? (
+              <View style={styles.tagRow}>
+                {selectedSpot.tags.map((tag) => (
+                  <Text key={tag} style={styles.tagChip}>
+                    {tag}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
             <Text style={styles.cardDescription}>{selectedSpot.description}</Text>
-            <Text style={styles.votes}>{selectedSpot.votes} votes</Text>
+            <View style={styles.detailMetaRow}>
+              <Text style={styles.detailMetaLabel}>热度</Text>
+              <Text style={styles.votes}>{selectedSpot.votes} votes</Text>
+            </View>
 
             <View style={styles.actions}>
               <Pressable
@@ -383,7 +415,9 @@ export default function TabOneScreen() {
         ) : (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>当前没有选中地点</Text>
-            <Text style={styles.emptyDescription}>请先去 Explore 选择一个地点</Text>
+            <Text style={styles.emptyDescription}>
+              可以先去 Explore 查看地点，或在地图上长按新增一个地点。
+            </Text>
 
             <Pressable
               onPress={() => router.navigate('/(tabs)/explore')}
@@ -585,30 +619,56 @@ const styles = StyleSheet.create({
   header: {
     marginTop: 8,
   },
-  title: {
-    fontSize: 28,
+  eyebrow: {
+    fontSize: 12,
     fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: '#2563EB',
+  },
+  title: {
+    marginTop: 8,
+    fontSize: 30,
+    fontWeight: '800',
     color: '#111827',
   },
   description: {
-    marginTop: 12,
-    fontSize: 16,
+    marginTop: 10,
+    fontSize: 15,
+    lineHeight: 22,
     color: '#6B7280',
   },
-  count: {
-    marginTop: 8,
-    fontSize: 15,
-    color: '#374151',
+  statsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 18,
+  },
+  statCard: {
+    flex: 1,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  statValue: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  statLabel: {
+    marginTop: 4,
+    fontSize: 13,
+    color: '#6B7280',
   },
   emptyCard: {
     marginTop: 24,
-    borderRadius: 16,
+    borderRadius: 22,
     backgroundColor: '#FFFFFF',
     padding: 20,
   },
   emptyTitle: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: 22,
+    fontWeight: '700',
     color: '#111827',
   },
   emptyDescription: {
@@ -619,46 +679,70 @@ const styles = StyleSheet.create({
   },
   card: {
     marginTop: 24,
-    borderRadius: 16,
+    borderRadius: 22,
     backgroundColor: '#FFFFFF',
     padding: 20,
   },
   cardLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
     color: '#6B7280',
   },
   cardTitle: {
     marginTop: 8,
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: '800',
     color: '#111827',
   },
-  meta: {
-    marginTop: 8,
-    fontSize: 14,
-    color: '#6B7280',
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
   },
-  statusText: {
-    marginTop: 8,
-    fontSize: 13,
-    fontWeight: '600',
+  badge: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  userBadge: {
+    backgroundColor: '#DBEAFE',
+    color: '#1D4ED8',
+  },
+  systemBadge: {
+    backgroundColor: '#E5E7EB',
     color: '#374151',
   },
-  sourceBadge: {
-    alignSelf: 'flex-start',
-    marginTop: 10,
+  pendingBadge: {
+    backgroundColor: '#FEF3C7',
+    color: '#B45309',
+  },
+  localBadge: {
+    backgroundColor: '#DCFCE7',
+    color: '#15803D',
+  },
+  metaText: {
+    marginTop: 12,
+    fontSize: 13,
+    color: '#6B7280',
+  },
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 14,
+  },
+  tagChip: {
     borderRadius: 999,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: '#EFF6FF',
     paddingHorizontal: 10,
     paddingVertical: 6,
     fontSize: 12,
     fontWeight: '600',
-    color: '#374151',
-  },
-  tags: {
-    marginTop: 10,
-    fontSize: 13,
     color: '#2563EB',
   },
   cardDescription: {
@@ -667,11 +751,23 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: '#4B5563',
   },
-  votes: {
-    marginTop: 12,
+  detailMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  detailMetaLabel: {
     fontSize: 13,
-    fontWeight: '600',
     color: '#6B7280',
+  },
+  votes: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#111827',
   },
   actions: {
     flexDirection: 'row',
@@ -682,48 +778,48 @@ const styles = StyleSheet.create({
   primaryButton: {
     alignSelf: 'flex-start',
     marginTop: 16,
-    borderRadius: 10,
+    borderRadius: 14,
     backgroundColor: '#111827',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   primaryButtonText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#FFFFFF',
   },
   primaryActionButton: {
     alignSelf: 'flex-start',
-    borderRadius: 10,
+    borderRadius: 14,
     backgroundColor: '#111827',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   primaryActionText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#FFFFFF',
   },
   secondaryButton: {
     alignSelf: 'flex-start',
     marginTop: 16,
-    borderRadius: 10,
-    backgroundColor: '#E5E7EB',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   secondaryButtonText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#111827',
   },
   dangerButton: {
     alignSelf: 'flex-start',
     marginTop: 16,
-    borderRadius: 10,
-    backgroundColor: '#FEE2E2',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   dangerButtonText: {
     fontSize: 14,
