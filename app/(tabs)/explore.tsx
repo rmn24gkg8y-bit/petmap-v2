@@ -15,6 +15,7 @@ export default function ExploreScreen() {
     filteredSpots,
     allTags,
     searchQuery,
+    userSpots,
     selectedTag,
     showFavoritesOnly,
     showUserOnly,
@@ -46,6 +47,14 @@ export default function ExploreScreen() {
           <View style={styles.header}>
             <Text style={styles.title}>Explore</Text>
             <Text style={styles.subtitle}>发现当前收录的宠物友好地点</Text>
+
+            <Pressable onPress={() => router.push('/my-spots')} style={styles.mySpotsEntry}>
+              <View>
+                <Text style={styles.mySpotsTitle}>我的地点</Text>
+                <Text style={styles.mySpotsSubtitle}>我添加的地点（{userSpots.length}）</Text>
+              </View>
+              <Text style={styles.mySpotsArrow}>查看</Text>
+            </Pressable>
 
             <View style={styles.searchRow}>
               <TextInput
@@ -339,6 +348,30 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 16,
     color: '#6B7280',
+  },
+  mySpotsEntry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 20,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+  },
+  mySpotsTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  mySpotsSubtitle: {
+    marginTop: 6,
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  mySpotsArrow: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2563EB',
   },
   searchRow: {
     flexDirection: 'row',
