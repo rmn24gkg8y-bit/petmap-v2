@@ -35,6 +35,7 @@ type PetMapStoreValue = {
   userLoc: UserLoc;
   selectedSpot: Spot | null;
   userSpots: Spot[];
+  favoriteSpots: Spot[];
   recentViewedSpots: Spot[];
   allTags: string[];
   filteredSpots: Spot[];
@@ -134,6 +135,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
     const spots = [...mockSpots, ...userCreatedSpots];
     const selectedSpot = spots.find((spot) => spot.id === selectedSpotId) ?? null;
     const userSpots = spots.filter((spot) => spot.source === 'user');
+    const favoriteSpots = spots.filter((spot) => favoriteIds.includes(spot.id));
     const isFavorite = (id: string) => favoriteIds.includes(id);
     const addRecentViewed = (id: string) =>
       setRecentViewedIds((current) => {
@@ -204,6 +206,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
       userLoc,
       selectedSpot,
       userSpots,
+      favoriteSpots,
       recentViewedSpots,
       allTags,
       filteredSpots,

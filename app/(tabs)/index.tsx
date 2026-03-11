@@ -327,10 +327,11 @@ export default function TabOneScreen() {
               <Text style={styles.statValue}>{totalSpots}</Text>
               <Text style={styles.statLabel}>当前地点数</Text>
             </View>
-            <View style={styles.statCard}>
+            <Pressable onPress={() => router.push('/my-favorites')} style={styles.statCard}>
               <Text style={styles.statValue}>{favoriteCount}</Text>
               <Text style={styles.statLabel}>已收藏</Text>
-            </View>
+              <Text style={styles.statAction}>查看我的收藏</Text>
+            </Pressable>
           </View>
         </View>
 
@@ -659,6 +660,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 13,
     color: '#6B7280',
+  },
+  statAction: {
+    marginTop: 10,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2563EB',
   },
   emptyCard: {
     marginTop: 24,
