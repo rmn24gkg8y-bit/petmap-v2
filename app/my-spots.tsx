@@ -21,8 +21,9 @@ export default function MySpotsScreen() {
         contentContainerStyle={styles.content}
         ListHeaderComponent={
           <View style={styles.header}>
+            <Text style={styles.eyebrow}>内容管理</Text>
             <Text style={styles.title}>我的地点</Text>
-            <Text style={styles.subtitle}>管理你本机保存的地点，共 {userSpots.length} 个</Text>
+            <Text style={styles.subtitle}>管理你本机保存的地点，共 {userSpots.length} 个。</Text>
           </View>
         }
         ListEmptyComponent={
@@ -38,14 +39,28 @@ export default function MySpotsScreen() {
           <View style={styles.card}>
             <Pressable onPress={() => handleSelectSpot(item.id)}>
               <Text style={styles.name}>{item.name}</Text>
-              <Text style={styles.sourceBadge}>我添加的</Text>
-              <Text style={styles.statusText}>
-                {item.submissionStatus === 'pending_review' ? '待审核' : '仅本机保存'}
-              </Text>
+              <View style={styles.badgeRow}>
+                <Text style={styles.sourceBadge}>我添加的</Text>
+                <Text
+                  style={[
+                    styles.statusBadge,
+                    item.submissionStatus === 'pending_review'
+                      ? styles.pendingBadge
+                      : styles.localBadge,
+                  ]}>
+                  {item.submissionStatus === 'pending_review' ? '待审核' : '仅本机保存'}
+                </Text>
+              </View>
               <Text style={styles.meta}>
                 {item.district} · {item.addressHint}
               </Text>
-              <Text style={styles.tags}>{item.tags.join(' · ')}</Text>
+              <View style={styles.tagRow}>
+                {item.tags.map((tag) => (
+                  <Text key={`${item.id}-${tag}`} style={styles.tagChip}>
+                    {tag}
+                  </Text>
+                ))}
+              </View>
             </Pressable>
 
             {item.submissionStatus !== 'pending_review' ? (
@@ -75,25 +90,34 @@ const styles = StyleSheet.create({
   header: {
     marginBottom: 16,
   },
-  title: {
-    fontSize: 28,
+  eyebrow: {
+    fontSize: 12,
     fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: '#2563EB',
+  },
+  title: {
+    marginTop: 8,
+    fontSize: 30,
+    fontWeight: '800',
     color: '#111827',
   },
   subtitle: {
-    marginTop: 8,
-    fontSize: 16,
+    marginTop: 10,
+    fontSize: 15,
+    lineHeight: 22,
     color: '#6B7280',
   },
   emptyState: {
     marginTop: 12,
-    borderRadius: 16,
+    borderRadius: 20,
     backgroundColor: '#FFFFFF',
     padding: 20,
   },
   emptyTitle: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: 22,
+    fontWeight: '700',
     color: '#111827',
   },
   emptyDescription: {
@@ -105,52 +129,75 @@ const styles = StyleSheet.create({
   primaryButton: {
     alignSelf: 'flex-start',
     marginTop: 16,
-    borderRadius: 10,
+    borderRadius: 14,
     backgroundColor: '#111827',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   primaryButtonText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#FFFFFF',
   },
   card: {
     marginBottom: 12,
-    borderRadius: 16,
+    borderRadius: 20,
     backgroundColor: '#FFFFFF',
-    padding: 16,
+    padding: 18,
   },
   name: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '800',
     color: '#111827',
   },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
   sourceBadge: {
-    alignSelf: 'flex-start',
-    marginTop: 8,
     borderRadius: 999,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: '#DBEAFE',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  statusBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  pendingBadge: {
+    backgroundColor: '#FEF3C7',
+    color: '#B45309',
+  },
+  localBadge: {
+    backgroundColor: '#DCFCE7',
+    color: '#15803D',
+  },
+  meta: {
+    marginTop: 12,
+    fontSize: 13,
+    color: '#6B7280',
+  },
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  tagChip: {
+    borderRadius: 999,
+    backgroundColor: '#EFF6FF',
     paddingHorizontal: 10,
     paddingVertical: 6,
     fontSize: 12,
     fontWeight: '600',
-    color: '#374151',
-  },
-  meta: {
-    marginTop: 8,
-    fontSize: 13,
-    color: '#6B7280',
-  },
-  statusText: {
-    marginTop: 8,
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  tags: {
-    marginTop: 8,
-    fontSize: 13,
     color: '#2563EB',
   },
 });
