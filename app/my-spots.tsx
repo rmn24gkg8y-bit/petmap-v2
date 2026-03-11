@@ -4,7 +4,7 @@ import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { usePetMapStore } from '@/store/petmap-store';
 
 export default function MySpotsScreen() {
-  const { userSpots, setSelectedSpot } = usePetMapStore();
+  const { userSpots, setSelectedSpot, submitSpotForReview } = usePetMapStore();
 
   function handleSelectSpot(id: string) {
     setSelectedSpot(id);
@@ -35,14 +35,27 @@ export default function MySpotsScreen() {
           </View>
         }
         renderItem={({ item }) => (
-          <Pressable onPress={() => handleSelectSpot(item.id)} style={styles.card}>
-            <Text style={styles.name}>{item.name}</Text>
-            <Text style={styles.sourceBadge}>我添加的</Text>
-            <Text style={styles.meta}>
-              {item.district} · {item.addressHint}
-            </Text>
-            <Text style={styles.tags}>{item.tags.join(' · ')}</Text>
-          </Pressable>
+          <View style={styles.card}>
+            <Pressable onPress={() => handleSelectSpot(item.id)}>
+              <Text style={styles.name}>{item.name}</Text>
+              <Text style={styles.sourceBadge}>我添加的</Text>
+              <Text style={styles.statusText}>
+                {item.submissionStatus === 'pending_review' ? '待审核' : '仅本机保存'}
+              </Text>
+              <Text style={styles.meta}>
+                {item.district} · {item.addressHint}
+              </Text>
+              <Text style={styles.tags}>{item.tags.join(' · ')}</Text>
+            </Pressable>
+
+            {item.submissionStatus !== 'pending_review' ? (
+              <Pressable
+                onPress={() => submitSpotForReview(item.id)}
+                style={styles.primaryButton}>
+                <Text style={styles.primaryButtonText}>提交审核</Text>
+              </Pressable>
+            ) : null}
+          </View>
         )}
       />
     </View>
@@ -128,6 +141,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 13,
     color: '#6B7280',
+  },
+  statusText: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
   },
   tags: {
     marginTop: 8,

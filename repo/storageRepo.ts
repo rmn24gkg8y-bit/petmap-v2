@@ -49,6 +49,9 @@ function isSpot(value: unknown): value is Spot {
     typeof spot.id === 'string' &&
     typeof spot.name === 'string' &&
     (spot.source === 'system' || spot.source === 'user') &&
+    (spot.submissionStatus === undefined ||
+      spot.submissionStatus === 'local' ||
+      spot.submissionStatus === 'pending_review') &&
     typeof spot.district === 'string' &&
     typeof spot.addressHint === 'string' &&
     typeof spot.lat === 'number' &&
