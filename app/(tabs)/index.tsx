@@ -264,13 +264,38 @@ export default function TabOneScreen() {
           initialRegion={INITIAL_REGION}
           onLongPress={handleLongPress}
           showsUserLocation>
-          {spots.map((spot) => (
-            <Marker
-              key={spot.id}
-              coordinate={{ latitude: spot.lat, longitude: spot.lng }}
-              onPress={() => setSelectedSpot(spot.id)}
-            />
-          ))}
+          {spots.map((spot) => {
+            const isSelected = selectedSpot?.id === spot.id;
+
+            return (
+              <Marker
+                key={spot.id}
+                coordinate={{ latitude: spot.lat, longitude: spot.lng }}
+                tracksViewChanges={false}
+                onPress={() => setSelectedSpot(spot.id)}>
+                <View style={styles.markerContainer}>
+                  <View
+                    style={[
+                      styles.markerPin,
+                      isSelected ? styles.markerPinSelected : styles.markerPinDefault,
+                    ]}>
+                    <View
+                      style={[
+                        styles.markerCenter,
+                        isSelected ? styles.markerCenterSelected : styles.markerCenterDefault,
+                      ]}
+                    />
+                  </View>
+                  <View
+                    style={[
+                      styles.markerStem,
+                      isSelected ? styles.markerStemSelected : styles.markerStemDefault,
+                    ]}
+                  />
+                </View>
+              </Marker>
+            );
+          })}
         </MapView>
       </View>
 
@@ -475,6 +500,53 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
+  },
+  markerContainer: {
+    alignItems: 'center',
+  },
+  markerPin: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    borderWidth: 2,
+  },
+  markerPinDefault: {
+    width: 20,
+    height: 20,
+    backgroundColor: '#FFFFFF',
+    borderColor: '#111827',
+  },
+  markerPinSelected: {
+    width: 28,
+    height: 28,
+    backgroundColor: '#DBEAFE',
+    borderColor: '#2563EB',
+  },
+  markerCenter: {
+    borderRadius: 999,
+  },
+  markerCenterDefault: {
+    width: 8,
+    height: 8,
+    backgroundColor: '#111827',
+  },
+  markerCenterSelected: {
+    width: 12,
+    height: 12,
+    backgroundColor: '#2563EB',
+  },
+  markerStem: {
+    width: 3,
+    borderRadius: 999,
+    marginTop: -1,
+  },
+  markerStemDefault: {
+    height: 10,
+    backgroundColor: '#111827',
+  },
+  markerStemSelected: {
+    height: 12,
+    backgroundColor: '#2563EB',
   },
   panel: {
     flex: 1.05,
