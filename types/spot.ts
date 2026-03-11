@@ -10,4 +10,6 @@ export type Spot = {
   tags: string[];
   description: string;
   votes: number;
+  photoUris?: string[];
+  formattedAddress?: string;
 };

@@ -1,20 +1,25 @@
+import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
+  Image,
+  Linking,
   Modal,
   PanResponder,
+  Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
   View,
   useWindowDimensions,
 } from 'react-native';
-import * as Location from 'expo-location';
-import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -36,6 +41,8 @@ export default function TabOneScreen() {
   const [editingSpotId, setEditingSpotId] = useState<string | null>(null);
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
   const [pendingCoords, setPendingCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [pendingFormattedAddress, setPendingFormattedAddress] = useState('');
+  const [isResolvingPendingAddress, setIsResolvingPendingAddress] = useState(false);
   const [formError, setFormError] = useState('');
   const [sheetVisibleHeight, setSheetVisibleHeight] = useState(136 + insets.bottom);
   const [formValues, setFormValues] = useState({
@@ -46,6 +53,7 @@ export default function TabOneScreen() {
     tags: [] as string[],
   });
   const {
+    hasHydratedStorage,
     totalSpots,
     favoriteCount,
     spots,
@@ -54,6 +62,9 @@ export default function TabOneScreen() {
     addSpot,
     updateSpot,
     removeSpot,
+    addSpotPhoto,
+    removeSpotPhoto,
+    setSpotFormattedAddress,
     submitSpotForReview,
     setSelectedSpot,
     setUserLoc,
@@ -70,6 +81,50 @@ export default function TabOneScreen() {
   const dragStartRef = useRef(collapsedOffset);
   const sheetOffsetRef = useRef(collapsedOffset);
   const sheetVisibleHeightRef = useRef(collapsedSheetHeight);
+  const inFlightAddressSpotIdsRef = useRef<Set<string>>(new Set());
+  const amapWebKey = process.env.EXPO_PUBLIC_AMAP_WEB_KEY?.trim() ?? '';
+
+  async function requestAmapReverseGeocode(lat: number, lng: number) {
+    if (!amapWebKey) {
+      return null;
+    }
+
+    try {
+      const params = new URLSearchParams({
+        key: amapWebKey,
+        location: `${lng},${lat}`,
+        extensions: 'base',
+      });
+      const response = await fetch(`https://restapi.amap.com/v3/geocode/regeo?${params.toString()}`);
+      const data: {
+        status?: string;
+        regeocode?: {
+          formatted_address?: string;
+          addressComponent?: {
+            district?: string;
+          };
+        };
+      } = await response.json();
+
+      if (data.status !== '1') {
+        return null;
+      }
+
+      const formattedAddress = data.regeocode?.formatted_address?.trim() ?? '';
+      const district = data.regeocode?.addressComponent?.district?.trim() ?? '';
+
+      if (!formattedAddress) {
+        return null;
+      }
+
+      return {
+        formattedAddress,
+        district,
+      };
+    } catch {
+      return null;
+    }
+  }
 
   useEffect(() => {
     const listenerId = sheetTranslateY.addListener(({ value }) => {
@@ -165,6 +220,97 @@ export default function TabOneScreen() {
     recenterSelectedSpot();
   }, [selectedSpot, sheetVisibleHeight]);
 
+  useEffect(() => {
+    console.log('[Map][addressEffect]', {
+      hasHydratedStorage,
+      selectedSpotId: selectedSpot?.id ?? null,
+      hasFormattedAddress: Boolean(selectedSpot?.formattedAddress),
+    });
+
+    if (!hasHydratedStorage || !selectedSpot || selectedSpot.formattedAddress || !amapWebKey) {
+      return;
+    }
+
+    const spot = selectedSpot;
+    const isInFlight = inFlightAddressSpotIdsRef.current.has(spot.id);
+
+    if (isInFlight) {
+      return;
+    }
+
+    inFlightAddressSpotIdsRef.current.add(spot.id);
+    let isCancelled = false;
+
+    async function resolveFormattedAddress() {
+      try {
+        const result = await requestAmapReverseGeocode(spot.lat, spot.lng);
+
+        if (isCancelled || !result) {
+          return;
+        }
+
+        setSpotFormattedAddress(spot.id, result.formattedAddress);
+      } catch {
+        // Silent fallback to district + addressHint.
+      } finally {
+        inFlightAddressSpotIdsRef.current.delete(spot.id);
+      }
+    }
+
+    resolveFormattedAddress();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    hasHydratedStorage,
+    selectedSpot,
+    selectedSpot?.formattedAddress,
+    selectedSpot?.id,
+    selectedSpot?.lat,
+    selectedSpot?.lng,
+    amapWebKey,
+    setSpotFormattedAddress,
+  ]);
+
+  useEffect(() => {
+    if (!isCreateModalVisible || modalMode !== 'create' || !pendingCoords) {
+      return;
+    }
+
+    const coords = pendingCoords;
+    let isCancelled = false;
+
+    async function resolvePendingAddress() {
+      setIsResolvingPendingAddress(true);
+      const result = await requestAmapReverseGeocode(coords.lat, coords.lng);
+
+      if (isCancelled) {
+        return;
+      }
+
+      if (result) {
+        setPendingFormattedAddress(result.formattedAddress);
+        if (result.district) {
+          setFormValues((current) => ({
+            ...current,
+            district: result.district,
+          }));
+        }
+      } else {
+        setPendingFormattedAddress('');
+      }
+
+      setIsResolvingPendingAddress(false);
+    }
+
+    resolvePendingAddress();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isCreateModalVisible, modalMode, pendingCoords]);
+
   const sheetPanResponder = useMemo(
     () =>
       PanResponder.create({
@@ -218,6 +364,8 @@ export default function TabOneScreen() {
       description: '',
       tags: [],
     });
+    setPendingFormattedAddress('');
+    setIsResolvingPendingAddress(false);
     setFormError('');
     setIsCreateModalVisible(true);
   }
@@ -227,6 +375,8 @@ export default function TabOneScreen() {
     setPendingCoords(null);
     setEditingSpotId(null);
     setModalMode('create');
+    setPendingFormattedAddress('');
+    setIsResolvingPendingAddress(false);
     setFormError('');
   }
 
@@ -256,6 +406,7 @@ export default function TabOneScreen() {
     const name = formValues.name.trim();
     const district = formValues.district.trim();
     const addressHint = formValues.addressHint.trim();
+    const formattedAddress = pendingFormattedAddress.trim();
     const description = formValues.description.trim();
     const tags = formValues.tags;
 
@@ -266,11 +417,6 @@ export default function TabOneScreen() {
 
     if (!district) {
       setFormError('请补充所属区');
-      return;
-    }
-
-    if (!addressHint) {
-      setFormError('请补充位置提示');
       return;
     }
 
@@ -302,6 +448,7 @@ export default function TabOneScreen() {
         submissionStatus: 'local' as const,
         district,
         addressHint,
+        formattedAddress: formattedAddress || undefined,
         lat: pendingCoords.lat,
         lng: pendingCoords.lng,
         tags,
@@ -335,6 +482,8 @@ export default function TabOneScreen() {
       description: selectedSpot.description,
       tags: selectedSpot.tags,
     });
+    setPendingFormattedAddress(selectedSpot.formattedAddress ?? '');
+    setIsResolvingPendingAddress(false);
     setFormError('');
     setIsCreateModalVisible(true);
   }
@@ -370,9 +519,125 @@ export default function TabOneScreen() {
     Alert.alert('提交成功', '该地点已进入待审核状态');
   }
 
+  async function handlePickSpotPhoto() {
+    if (!selectedSpot || selectedSpot.source !== 'user') {
+      return;
+    }
+
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        Alert.alert('无法访问相册', '请先在系统设置中允许访问相册。');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+      });
+
+      if (result.canceled || result.assets.length === 0) {
+        return;
+      }
+
+      const uri = result.assets[0]?.uri;
+
+      if (!uri) {
+        return;
+      }
+
+      addSpotPhoto(selectedSpot.id, uri);
+    } catch {
+      Alert.alert('添加失败', '读取图片失败，请稍后重试。');
+    }
+  }
+
+  function handleRemoveSpotPhoto(uri: string) {
+    if (!selectedSpot || selectedSpot.source !== 'user') {
+      return;
+    }
+
+    removeSpotPhoto(selectedSpot.id, uri);
+  }
+
+  async function handleOpenNavigation() {
+    if (!selectedSpot) {
+      return;
+    }
+
+    const encodedName = encodeURIComponent(selectedSpot.name);
+    const { lat, lng } = selectedSpot;
+    const mapCandidates = [
+      Platform.select({
+        ios: `maps://?ll=${lat},${lng}&q=${encodedName}`,
+        android: `geo:${lat},${lng}?q=${lat},${lng}(${encodedName})`,
+        default: null,
+      }),
+      `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`,
+    ].filter((url): url is string => typeof url === 'string');
+
+    for (const url of mapCandidates) {
+      try {
+        const canOpen = await Linking.canOpenURL(url);
+
+        if (!canOpen) {
+          continue;
+        }
+
+        await Linking.openURL(url);
+        return;
+      } catch {
+        // Try next map URL candidate.
+      }
+    }
+
+    Alert.alert('打开失败', '暂时无法打开地图导航，请稍后重试。');
+  }
+
+  async function handleShareSpotInfo() {
+    if (!selectedSpot) {
+      return;
+    }
+
+    const fallbackAddress = [selectedSpot.district, selectedSpot.addressHint]
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .join(' · ');
+    const shareAddress = selectedSpot.formattedAddress?.trim() || fallbackAddress || '地址待补充';
+
+    const lines = [
+      `我在 PetMap 发现一个地点：${selectedSpot.name}`,
+      `地址：${shareAddress}`,
+      selectedSpot.description ? `简介：${selectedSpot.description}` : null,
+      `坐标：${selectedSpot.lat.toFixed(6)}, ${selectedSpot.lng.toFixed(6)}`,
+    ].filter((line): line is string => Boolean(line));
+
+    try {
+      await Share.share({
+        message: lines.join('\n'),
+      });
+    } catch {
+      Alert.alert('分享失败', '暂时无法分享地点信息。');
+    }
+  }
+
   function getQuickActionBadgeCount(count: number) {
     return count > 99 ? '99+' : String(count);
   }
+
+  const selectedSpotPhotoUris = selectedSpot?.photoUris ?? [];
+  const shouldUseReadonlyDistrict =
+    Boolean(pendingFormattedAddress.trim()) &&
+    Boolean(formValues.district.trim());
+  const selectedSpotFallbackAddress =
+    selectedSpot &&
+    [selectedSpot.district, selectedSpot.addressHint]
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .join(' · ');
+  const selectedSpotDisplayAddress =
+    selectedSpot?.formattedAddress?.trim() || selectedSpotFallbackAddress || '地址待补充';
 
   return (
     <View style={styles.container}>
@@ -483,9 +748,12 @@ export default function TabOneScreen() {
                   </Text>
                 ) : null}
               </View>
-              <Text style={styles.spotMetaText}>
-                {selectedSpot.district} · {selectedSpot.addressHint}
-              </Text>
+              <View style={styles.addressBlock}>
+                <Text style={styles.addressLabel}>
+                  {selectedSpot.formattedAddress ? '真实地址' : '位置说明'}
+                </Text>
+                <Text style={styles.spotMetaText}>{selectedSpotDisplayAddress}</Text>
+              </View>
               {selectedSpot.tags.length > 0 ? (
                 <View style={styles.tagRow}>
                   {selectedSpot.tags.map((tag) => (
@@ -498,19 +766,51 @@ export default function TabOneScreen() {
               <View style={styles.photoSection}>
                 <View style={styles.photoSectionHeader}>
                   <Text style={styles.photoSectionTitle}>图片预览</Text>
-                  <Text style={styles.photoSectionHint}>即将支持</Text>
+                  {selectedSpot.source === 'user' ? (
+                    <Pressable onPress={handlePickSpotPhoto} style={styles.photoAddButton}>
+                      <Ionicons name="add" size={14} color="#1D4ED8" />
+                      <Text style={styles.photoAddButtonText}>添加图片</Text>
+                    </Pressable>
+                  ) : (
+                    <Text style={styles.photoSectionHint}>即将支持</Text>
+                  )}
                 </View>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.photoRow}>
-                  {[1, 2, 3].map((item) => (
-                    <View key={item} style={styles.photoPlaceholderCard}>
-                      <Text style={styles.photoPlaceholderIcon}>+</Text>
-                      <Text style={styles.photoPlaceholderText}>未来可展示地点图片</Text>
-                    </View>
-                  ))}
-                </ScrollView>
+                {selectedSpot.source === 'user' ? (
+                  selectedSpotPhotoUris.length > 0 ? (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.photoRow}>
+                      {selectedSpotPhotoUris.map((uri) => (
+                        <View key={`${selectedSpot.id}-${uri}`} style={styles.userPhotoCard}>
+                          <Image source={{ uri }} style={styles.userPhotoImage} />
+                          <Pressable
+                            onPress={() => handleRemoveSpotPhoto(uri)}
+                            style={styles.photoRemoveButton}>
+                            <Ionicons name="close" size={12} color="#FFFFFF" />
+                          </Pressable>
+                        </View>
+                      ))}
+                    </ScrollView>
+                  ) : (
+                    <Pressable onPress={handlePickSpotPhoto} style={styles.photoEmptyCard}>
+                      <Ionicons name="images-outline" size={18} color="#6B7280" />
+                      <Text style={styles.photoEmptyText}>还没有图片，点击添加第一张</Text>
+                    </Pressable>
+                  )
+                ) : (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.photoRow}>
+                    {[1, 2, 3].map((item) => (
+                      <View key={item} style={styles.photoPlaceholderCard}>
+                        <Text style={styles.photoPlaceholderIcon}>+</Text>
+                        <Text style={styles.photoPlaceholderText}>未来可展示地点图片</Text>
+                      </View>
+                    ))}
+                  </ScrollView>
+                )}
               </View>
               <Text style={styles.cardDescription}>
                 {selectedSpot.description || '暂无地点简介，后续可以继续补充。'}
@@ -518,6 +818,17 @@ export default function TabOneScreen() {
               <View style={styles.detailMetaRow}>
                 <Text style={styles.detailMetaLabel}>热度</Text>
                 <Text style={styles.votes}>{selectedSpot.votes} votes</Text>
+              </View>
+
+              <View style={styles.spotActionsRow}>
+                <Pressable onPress={handleOpenNavigation} style={styles.spotActionChip}>
+                  <Ionicons name="navigate-outline" size={15} color="#1F2937" />
+                  <Text style={styles.spotActionChipText}>去这里</Text>
+                </Pressable>
+                <Pressable onPress={handleShareSpotInfo} style={styles.spotActionChip}>
+                  <Ionicons name="share-social-outline" size={15} color="#1F2937" />
+                  <Text style={styles.spotActionChipText}>分享地点</Text>
+                </Pressable>
               </View>
 
               <View style={styles.actions}>
@@ -620,40 +931,66 @@ export default function TabOneScreen() {
                 placeholder="地点名称"
                 style={styles.input}
               />
+              <View style={styles.formattedAddressSection}>
+                <Text style={styles.formattedAddressLabel}>真实地址</Text>
+                <View style={styles.formattedAddressBox}>
+                  <Text style={styles.formattedAddressText}>
+                    {isResolvingPendingAddress
+                      ? '正在获取真实地址...'
+                      : pendingFormattedAddress || '暂未获取到真实地址'}
+                  </Text>
+                </View>
+                {modalMode === 'create' &&
+                !isResolvingPendingAddress &&
+                !pendingFormattedAddress.trim() ? (
+                  <Text style={styles.formattedAddressHintText}>
+                    当前网络环境下暂未获取到真实地址，可手动选择所属区后继续保存
+                  </Text>
+                ) : null}
+              </View>
               <TextInput
                 value={formValues.addressHint}
                 onChangeText={(value) => updateFormValue('addressHint', value)}
-                placeholder="位置提示，例如近某地铁站"
+                placeholder="位置补充说明（选填），例如靠近北门 / 入口在侧边"
                 style={styles.input}
               />
-              <View style={styles.optionSection}>
-                <Text style={styles.optionLabel}>所属区</Text>
-                <View style={styles.chipGroup}>
-                  {DISTRICT_OPTIONS.map((district) => {
-                    const isSelected = formValues.district === district;
-
-                    return (
-                      <Pressable
-                        key={district}
-                        onPress={() => updateFormValue('district', district)}
-                        style={[
-                          styles.optionChip,
-                          isSelected ? styles.optionChipActive : styles.optionChipInactive,
-                        ]}>
-                        <Text
-                          style={[
-                            styles.optionChipText,
-                            isSelected
-                              ? styles.optionChipTextActive
-                              : styles.optionChipTextInactive,
-                          ]}>
-                          {district}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
+              {shouldUseReadonlyDistrict ? (
+                <View style={styles.formattedAddressSection}>
+                  <Text style={styles.formattedAddressLabel}>所属区</Text>
+                  <View style={styles.formattedAddressBox}>
+                    <Text style={styles.formattedAddressText}>{formValues.district}</Text>
+                  </View>
                 </View>
-              </View>
+              ) : (
+                <View style={styles.optionSection}>
+                  <Text style={styles.optionLabel}>所属区</Text>
+                  <View style={styles.chipGroup}>
+                    {DISTRICT_OPTIONS.map((district) => {
+                      const isSelected = formValues.district === district;
+
+                      return (
+                        <Pressable
+                          key={district}
+                          onPress={() => updateFormValue('district', district)}
+                          style={[
+                            styles.optionChip,
+                            isSelected ? styles.optionChipActive : styles.optionChipInactive,
+                          ]}>
+                          <Text
+                            style={[
+                              styles.optionChipText,
+                              isSelected
+                                ? styles.optionChipTextActive
+                                : styles.optionChipTextInactive,
+                            ]}>
+                            {district}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
               <TextInput
                 value={formValues.description}
                 onChangeText={(value) => updateFormValue('description', value)}
@@ -969,9 +1306,17 @@ const styles = StyleSheet.create({
     color: '#6B7280',
   },
   spotMetaText: {
-    marginTop: 12,
     fontSize: 14,
     lineHeight: 20,
+    color: '#374151',
+  },
+  addressBlock: {
+    marginTop: 12,
+    gap: 6,
+  },
+  addressLabel: {
+    fontSize: 12,
+    fontWeight: '600',
     color: '#6B7280',
   },
   tagRow: {
@@ -1002,6 +1347,22 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#111827',
   },
+  photoAddButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 999,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  photoAddButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
   photoSectionHint: {
     fontSize: 12,
     color: '#6B7280',
@@ -1019,6 +1380,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 14,
+  },
+  photoEmptyCard: {
+    marginTop: 12,
+    borderRadius: 18,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    minHeight: 110,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  photoEmptyText: {
+    fontSize: 13,
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  userPhotoCard: {
+    width: 152,
+    height: 110,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: '#E5E7EB',
+  },
+  userPhotoImage: {
+    width: '100%',
+    height: '100%',
+  },
+  photoRemoveButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    backgroundColor: 'rgba(17, 24, 39, 0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   photoPlaceholderIcon: {
     fontSize: 24,
@@ -1055,6 +1455,28 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#111827',
+  },
+  spotActionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  spotActionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  spotActionChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1F2937',
   },
   actions: {
     flexDirection: 'row',
@@ -1150,6 +1572,32 @@ const styles = StyleSheet.create({
   modalFormContent: {
     gap: 12,
     paddingBottom: 8,
+  },
+  formattedAddressSection: {
+    gap: 8,
+  },
+  formattedAddressLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  formattedAddressBox: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  formattedAddressText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#374151',
+  },
+  formattedAddressHintText: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#6B7280',
   },
   optionSection: {
     gap: 10,

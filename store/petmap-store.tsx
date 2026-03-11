@@ -9,9 +9,11 @@ import {
 
 import { mockSpots } from '@/repo/spotsRepo';
 import {
+  loadFormattedAddressBySpotId,
   loadFavoriteIds,
   loadRecentViewedIds,
   loadUserCreatedSpots,
+  saveFormattedAddressBySpotId,
   saveFavoriteIds,
   saveRecentViewedIds,
   saveUserCreatedSpots,
@@ -23,6 +25,7 @@ type SortMode = 'popular' | 'name' | 'distance';
 type UserLoc = { lat: number; lng: number } | null;
 
 type PetMapStoreValue = {
+  hasHydratedStorage: boolean;
   spots: Spot[];
   selectedSpotId: string | null;
   favoriteIds: string[];
@@ -44,6 +47,9 @@ type PetMapStoreValue = {
   addSpot: (spot: Spot) => void;
   updateSpot: (spot: Spot) => void;
   removeSpot: (id: string) => void;
+  addSpotPhoto: (spotId: string, uri: string) => void;
+  removeSpotPhoto: (spotId: string, uri: string) => void;
+  setSpotFormattedAddress: (id: string, formattedAddress: string) => void;
   submitSpotForReview: (id: string) => void;
   setSelectedSpot: (id: string) => void;
   clearSelectedSpot: () => void;
@@ -63,6 +69,9 @@ const PetMapContext = createContext<PetMapStoreValue | undefined>(undefined);
 
 export function PetMapProvider({ children }: PropsWithChildren) {
   const [userCreatedSpots, setUserCreatedSpots] = useState<Spot[]>([]);
+  const [formattedAddressBySpotId, setFormattedAddressBySpotId] = useState<Record<string, string>>(
+    {}
+  );
   const [selectedSpotId, setSelectedSpotId] = useState<string | null>(null);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [recentViewedIds, setRecentViewedIds] = useState<string[]>([]);
@@ -78,15 +87,28 @@ export function PetMapProvider({ children }: PropsWithChildren) {
     let isMounted = true;
 
     async function hydrateStorage() {
-      const [storedFavoriteIds, storedRecentViewedIds, storedUserCreatedSpots] = await Promise.all([
+      const [
+        storedFavoriteIds,
+        storedRecentViewedIds,
+        storedUserCreatedSpots,
+        storedFormattedAddressBySpotId,
+      ] = await Promise.all([
         loadFavoriteIds(),
         loadRecentViewedIds(),
         loadUserCreatedSpots(),
+        loadFormattedAddressBySpotId(),
       ]);
 
       if (!isMounted) {
         return;
       }
+
+      const formattedAddressKeys = Object.keys(storedFormattedAddressBySpotId);
+      console.log(
+        '[PetMapStore][hydrate] loaded formattedAddressBySpotId keys:',
+        formattedAddressKeys.length,
+        formattedAddressKeys
+      );
 
       setFavoriteIds(storedFavoriteIds);
       setRecentViewedIds(storedRecentViewedIds);
@@ -97,6 +119,10 @@ export function PetMapProvider({ children }: PropsWithChildren) {
             : spot
         )
       );
+      setFormattedAddressBySpotId((current) => ({
+        ...storedFormattedAddressBySpotId,
+        ...current,
+      }));
       setHasHydratedStorage(true);
     }
 
@@ -131,8 +157,38 @@ export function PetMapProvider({ children }: PropsWithChildren) {
     saveUserCreatedSpots(userCreatedSpots);
   }, [userCreatedSpots, hasHydratedStorage]);
 
+  useEffect(() => {
+    if (!hasHydratedStorage) {
+      return;
+    }
+
+    const formattedAddressKeys = Object.keys(formattedAddressBySpotId);
+    console.log(
+      '[PetMapStore][persist] save formattedAddressBySpotId keys:',
+      formattedAddressKeys.length,
+      formattedAddressKeys
+    );
+    saveFormattedAddressBySpotId(formattedAddressBySpotId);
+  }, [formattedAddressBySpotId, hasHydratedStorage]);
+
   const value = useMemo(() => {
-    const spots = [...mockSpots, ...userCreatedSpots];
+    const systemSpotHitCount = mockSpots.filter(
+      (spot) => typeof formattedAddressBySpotId[spot.id] === 'string'
+    ).length;
+    console.log('[PetMapStore][compose] system spot cache hits:', systemSpotHitCount);
+
+    const spots = [
+      ...mockSpots.map((spot) =>
+        formattedAddressBySpotId[spot.id]
+          ? { ...spot, formattedAddress: formattedAddressBySpotId[spot.id] }
+          : spot
+      ),
+      ...userCreatedSpots.map((spot) =>
+        spot.formattedAddress || !formattedAddressBySpotId[spot.id]
+          ? spot
+          : { ...spot, formattedAddress: formattedAddressBySpotId[spot.id] }
+      ),
+    ];
     const selectedSpot = spots.find((spot) => spot.id === selectedSpotId) ?? null;
     const userSpots = spots.filter((spot) => spot.source === 'user');
     const favoriteSpots = spots.filter((spot) => favoriteIds.includes(spot.id));
@@ -194,6 +250,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
     });
 
     return {
+      hasHydratedStorage,
       spots,
       selectedSpotId,
       favoriteIds,
@@ -229,6 +286,66 @@ export function PetMapProvider({ children }: PropsWithChildren) {
         setSelectedSpotId((current) => (current === id ? null : current));
         setFavoriteIds((current) => current.filter((item) => item !== id));
         setRecentViewedIds((current) => current.filter((item) => item !== id));
+      },
+      addSpotPhoto: (spotId: string, uri: string) => {
+        const normalizedUri = uri.trim();
+
+        if (!normalizedUri) {
+          return;
+        }
+
+        setUserCreatedSpots((current) =>
+          current.map((spot) =>
+            spot.id === spotId && spot.source === 'user'
+              ? {
+                  ...spot,
+                  photoUris: (spot.photoUris ?? []).includes(normalizedUri)
+                    ? spot.photoUris ?? []
+                    : [...(spot.photoUris ?? []), normalizedUri],
+                }
+              : spot
+          )
+        );
+      },
+      removeSpotPhoto: (spotId: string, uri: string) => {
+        setUserCreatedSpots((current) =>
+          current.map((spot) =>
+            spot.id === spotId && spot.source === 'user'
+              ? {
+                  ...spot,
+                  photoUris: (spot.photoUris ?? []).filter((item) => item !== uri),
+                }
+              : spot
+          )
+        );
+      },
+      setSpotFormattedAddress: (id: string, formattedAddress: string) => {
+        const nextValue = formattedAddress.trim();
+
+        if (!nextValue) {
+          return;
+        }
+
+        setFormattedAddressBySpotId((current) => {
+          if (current[id] === nextValue) {
+            return current;
+          }
+
+          const nextMap = { ...current, [id]: nextValue };
+          const nextKeys = Object.keys(nextMap);
+          console.log(
+            '[PetMapStore][setSpotFormattedAddress]',
+            id,
+            nextValue,
+            'keys:',
+            nextKeys.length
+          );
+
+          return nextMap;
+        });
+        setUserCreatedSpots((current) =>
+          current.map((spot) => (spot.id === id ? { ...spot, formattedAddress: nextValue } : spot))
+        );
       },
       submitSpotForReview: (id: string) => {
         setUserCreatedSpots((current) =>
@@ -267,6 +384,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
       isFavorite,
     };
   }, [
+    hasHydratedStorage,
     favoriteIds,
     recentViewedIds,
     searchQuery,
@@ -275,6 +393,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
     showFavoritesOnly,
     showUserOnly,
     sortMode,
+    formattedAddressBySpotId,
     userLoc,
     userCreatedSpots,
   ]);
