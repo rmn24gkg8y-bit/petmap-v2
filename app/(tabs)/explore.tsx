@@ -3,6 +3,10 @@ import { useMemo, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import {
+  SPOT_TYPE_LABELS,
+  SPOT_TYPE_OPTIONS,
+} from '@/constants/spotFormOptions';
+import {
   EmptyStateCard,
   PrimaryButton,
   SectionHeader,
@@ -35,6 +39,7 @@ export default function ExploreScreen() {
     allTags,
     searchQuery,
     selectedTag,
+    selectedSpotType,
     showFavoritesOnly,
     showUserOnly,
     sortMode,
@@ -42,6 +47,7 @@ export default function ExploreScreen() {
     setSelectedSpot,
     setSearchQuery,
     setSelectedTag,
+    setSelectedSpotType,
     setShowFavoritesOnly,
     setShowUserOnly,
     setSortMode,
@@ -63,6 +69,7 @@ export default function ExploreScreen() {
     ],
     [filteredSpots]
   );
+  const selectedSpotTypeLabel = selectedSpotType ? SPOT_TYPE_LABELS[selectedSpotType] : '全部类型';
 
   function handleSelectSpot(id: string) {
     setSelectedSpot(id);
@@ -158,11 +165,29 @@ export default function ExploreScreen() {
                       onPress={() => setSortMode('distance')}
                     />
                   </View>
+                  <View style={styles.stickyRow}>
+                    <Text style={styles.stickyLabel}>类型</Text>
+                    <TagChip
+                      label="全部"
+                      compact
+                      active={selectedSpotType === null}
+                      onPress={() => setSelectedSpotType(null)}
+                    />
+                    {SPOT_TYPE_OPTIONS.map((spotType) => (
+                      <TagChip
+                        key={spotType}
+                        label={SPOT_TYPE_LABELS[spotType]}
+                        compact
+                        active={selectedSpotType === spotType}
+                        onPress={() => setSelectedSpotType(spotType)}
+                      />
+                    ))}
+                  </View>
                 </View>
 
                 <View style={styles.stickyFooter}>
                   <Text style={styles.resultSummary}>
-                    {SORT_MODE_LABELS[sortMode]} · {selectedTag ?? '全部标签'} · {filteredSpots.length} 个结果
+                    {SORT_MODE_LABELS[sortMode]} · {selectedSpotTypeLabel} · {selectedTag ?? '全部标签'} · {filteredSpots.length} 个结果
                   </Text>
                   <Pressable
                     onPress={() => setIsTagExpanded((current) => !current)}

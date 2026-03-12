@@ -63,7 +63,7 @@ function parseStringRecord(value: string | null): Record<string, string> {
   }
 }
 
-function isSpot(value: unknown): value is Spot {
+function isBaseSpot(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object') {
     return false;
   }
@@ -84,11 +84,65 @@ function isSpot(value: unknown): value is Spot {
     Array.isArray(spot.tags) &&
     spot.tags.every((item) => typeof item === 'string') &&
     typeof spot.description === 'string' &&
-    typeof spot.votes === 'number' &&
-    (spot.photoUris === undefined ||
-      (Array.isArray(spot.photoUris) && spot.photoUris.every((item) => typeof item === 'string'))) &&
-    (spot.formattedAddress === undefined || typeof spot.formattedAddress === 'string')
+    typeof spot.votes === 'number'
   );
+}
+
+function parseSpot(value: unknown): Spot | null {
+  if (!isBaseSpot(value)) {
+    return null;
+  }
+
+  const spot = value as Record<string, unknown>;
+  const spotType =
+    spot.spotType === 'park' ||
+    spot.spotType === 'cafe' ||
+    spot.spotType === 'hospital' ||
+    spot.spotType === 'store' ||
+    spot.spotType === 'indoor' ||
+    spot.spotType === 'other'
+      ? spot.spotType
+      : 'other';
+
+  return {
+    id: spot.id as string,
+    name: spot.name as string,
+    source: spot.source as Spot['source'],
+    submissionStatus:
+      spot.submissionStatus === 'local' || spot.submissionStatus === 'pending_review'
+        ? spot.submissionStatus
+        : undefined,
+    spotType,
+    district: spot.district as string,
+    addressHint: spot.addressHint as string,
+    lat: spot.lat as number,
+    lng: spot.lng as number,
+    tags: spot.tags as string[],
+    description: spot.description as string,
+    votes: spot.votes as number,
+    petFriendlyLevel:
+      spot.petFriendlyLevel === 'high' ||
+      spot.petFriendlyLevel === 'medium' ||
+      spot.petFriendlyLevel === 'low'
+        ? spot.petFriendlyLevel
+        : undefined,
+    priceLevel:
+      spot.priceLevel === '$' || spot.priceLevel === '$$' || spot.priceLevel === '$$$'
+        ? spot.priceLevel
+        : undefined,
+    businessHours: typeof spot.businessHours === 'string' ? spot.businessHours : undefined,
+    contact: typeof spot.contact === 'string' ? spot.contact : undefined,
+    verified: typeof spot.verified === 'boolean' ? spot.verified : undefined,
+    merchantStatus:
+      spot.merchantStatus === 'none' || spot.merchantStatus === 'claimed'
+        ? spot.merchantStatus
+        : undefined,
+    photoUris:
+      Array.isArray(spot.photoUris) && spot.photoUris.every((item) => typeof item === 'string')
+        ? (spot.photoUris as string[])
+        : undefined,
+    formattedAddress: typeof spot.formattedAddress === 'string' ? spot.formattedAddress : undefined,
+  };
 }
 
 async function loadSpots(key: string): Promise<Spot[]> {
@@ -101,7 +155,11 @@ async function loadSpots(key: string): Promise<Spot[]> {
 
     const parsed = JSON.parse(value);
 
-    return Array.isArray(parsed) ? parsed.filter(isSpot) : [];
+    return Array.isArray(parsed)
+      ? parsed
+          .map((item) => parseSpot(item))
+          .filter((item): item is Spot => item !== null)
+      : [];
   } catch {
     return [];
   }

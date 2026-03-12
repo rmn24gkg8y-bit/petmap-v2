@@ -32,6 +32,7 @@ type PetMapStoreValue = {
   recentViewedIds: string[];
   searchQuery: string;
   selectedTag: string | null;
+  selectedSpotType: Spot['spotType'] | null;
   showFavoritesOnly: boolean;
   showUserOnly: boolean;
   sortMode: SortMode;
@@ -57,6 +58,7 @@ type PetMapStoreValue = {
   addRecentViewed: (id: string) => void;
   setSearchQuery: (value: string) => void;
   setSelectedTag: (tag: string | null) => void;
+  setSelectedSpotType: (spotType: Spot['spotType'] | null) => void;
   setShowFavoritesOnly: (value: boolean) => void;
   setShowUserOnly: (value: boolean) => void;
   setSortMode: (mode: SortMode) => void;
@@ -77,6 +79,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
   const [recentViewedIds, setRecentViewedIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [selectedSpotType, setSelectedSpotType] = useState<Spot['spotType'] | null>(null);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [showUserOnly, setShowUserOnly] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('popular');
@@ -188,7 +191,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
           ? spot
           : { ...spot, formattedAddress: formattedAddressBySpotId[spot.id] }
       ),
-    ];
+    ].map((spot) => (spot.spotType ? spot : { ...spot, spotType: 'other' as const }));
     const selectedSpot = spots.find((spot) => spot.id === selectedSpotId) ?? null;
     const userSpots = spots.filter((spot) => spot.source === 'user');
     const favoriteSpots = spots.filter((spot) => favoriteIds.includes(spot.id));
@@ -230,7 +233,11 @@ export function PetMapProvider({ children }: PropsWithChildren) {
       selectedTag === null
         ? filteredBySource
         : filteredBySource.filter((spot) => spot.tags.includes(selectedTag));
-    const filteredSpots = [...filteredByTag].sort((a, b) => {
+    const filteredBySpotType =
+      selectedSpotType === null
+        ? filteredByTag
+        : filteredByTag.filter((spot) => spot.spotType === selectedSpotType);
+    const filteredSpots = [...filteredBySpotType].sort((a, b) => {
       if (sortMode === 'distance') {
         if (!userLoc) {
           return b.votes - a.votes;
@@ -257,6 +264,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
       recentViewedIds,
       searchQuery,
       selectedTag,
+      selectedSpotType,
       showFavoritesOnly,
       showUserOnly,
       sortMode,
@@ -370,12 +378,14 @@ export function PetMapProvider({ children }: PropsWithChildren) {
       addRecentViewed,
       setSearchQuery,
       setSelectedTag,
+      setSelectedSpotType,
       setShowFavoritesOnly,
       setShowUserOnly,
       setSortMode,
       resetExploreFilters: () => {
         setSearchQuery('');
         setSelectedTag(null);
+        setSelectedSpotType(null);
         setShowFavoritesOnly(false);
         setShowUserOnly(false);
         setSortMode('popular');
@@ -390,6 +400,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
     searchQuery,
     selectedSpotId,
     selectedTag,
+    selectedSpotType,
     showFavoritesOnly,
     showUserOnly,
     sortMode,

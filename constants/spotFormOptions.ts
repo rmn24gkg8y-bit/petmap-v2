@@ -1,3 +1,5 @@
+import type { PetFriendlyLevel, SpotType } from '@/types/spot';
+
 export const DISTRICT_OPTIONS = [
   '黄浦区',
   '徐汇区',
@@ -9,6 +11,30 @@ export const DISTRICT_OPTIONS = [
   '浦东新区',
   '闵行区',
 ];
+
+export const SPOT_TYPE_OPTIONS: SpotType[] = [
+  'park',
+  'cafe',
+  'hospital',
+  'store',
+  'indoor',
+  'other',
+];
+
+export const SPOT_TYPE_LABELS: Record<SpotType, string> = {
+  park: '公园',
+  cafe: '咖啡 / 餐饮',
+  hospital: '宠物医院',
+  store: '宠物店',
+  indoor: '室内友好',
+  other: '其他',
+};
+
+export const PET_FRIENDLY_LEVEL_LABELS: Record<PetFriendlyLevel, string> = {
+  high: '非常友好',
+  medium: '比较友好',
+  low: '一般',
+};
 
 export const TAG_OPTIONS = [
   '咖啡',
