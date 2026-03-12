@@ -54,6 +54,24 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="services"
+        options={{
+          title: 'Services',
+          tabBarIcon: ({ color }) => (
+            <SymbolView
+              name={{
+                ios: 'square.grid.2x2',
+                android: 'apps',
+                web: 'apps',
+              }}
+              tintColor={color}
+              size={28}
+            />
+          ),
+          headerTitle: 'Services',
+        }}
+      />
+      <Tabs.Screen
         name="me"
         options={{
           title: 'Me',
