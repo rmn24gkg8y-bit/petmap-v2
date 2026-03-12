@@ -1,12 +1,52 @@
 import { router, Stack } from 'expo-router';
-import { Alert, FlatList, StyleSheet, View } from 'react-native';
+import { useMemo } from 'react';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { EmptyStateCard, PrimaryButton, SectionHeader, SpotCard, StatusBadge } from '@/components/ui';
+import { SPOT_TYPE_LABELS } from '@/constants/spotFormOptions';
 import { theme } from '@/constants/theme';
 import { usePetMapStore } from '@/store/petmap-store';
+import type { Spot } from '@/types/spot';
+
+type SpotGroupKey = 'pending' | 'published' | 'other';
+
+function getSpotGroupKey(spot: Spot): SpotGroupKey {
+  if (spot.submissionStatus === 'pending_review') {
+    return 'pending';
+  }
+
+  if (spot.verified) {
+    return 'published';
+  }
+
+  return 'other';
+}
+
+function getSpotStatusMeta(spot: Spot) {
+  if (spot.submissionStatus === 'pending_review') {
+    return { label: '审核中', variant: 'pending' as const };
+  }
+
+  if (spot.verified) {
+    return { label: '已发布', variant: 'favorite' as const };
+  }
+
+  return { label: '待提交', variant: 'local' as const };
+}
 
 export default function MySpotsScreen() {
   const { userSpots, setSelectedSpot, submitSpotForReview } = usePetMapStore();
+  const groupedSpots = useMemo(() => {
+    const pending = userSpots.filter((spot) => getSpotGroupKey(spot) === 'pending');
+    const published = userSpots.filter((spot) => getSpotGroupKey(spot) === 'published');
+    const others = userSpots.filter((spot) => getSpotGroupKey(spot) === 'other');
+
+    return [
+      { key: 'pending' as const, title: '审核中', spots: pending },
+      { key: 'published' as const, title: '已发布', spots: published },
+      { key: 'other' as const, title: '待提交', spots: others },
+    ].filter((group) => group.spots.length > 0);
+  }, [userSpots]);
 
   function handleSelectSpot(id: string) {
     setSelectedSpot(id);
@@ -32,20 +72,15 @@ export default function MySpotsScreen() {
     <View style={styles.container}>
       <Stack.Screen options={{ title: '我的地点' }} />
 
-      <FlatList
-        data={userSpots}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-        ListHeaderComponentStyle={styles.listHeader}
-        ListHeaderComponent={
-          <SectionHeader
-            eyebrow="内容管理"
-            title="我的地点"
-            subtitle={`管理你本机保存的地点，共 ${userSpots.length} 个。`}
-          />
-        }
-        ListEmptyComponent={
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <SectionHeader
+          eyebrow="内容管理"
+          title="我的地点"
+          subtitle={`管理你本机保存的地点，共 ${userSpots.length} 个。`}
+          style={styles.listHeader}
+        />
+
+        {userSpots.length === 0 ? (
           <View style={styles.listEmpty}>
             <EmptyStateCard
               title="你还没有添加任何地点"
@@ -53,41 +88,53 @@ export default function MySpotsScreen() {
               action={<PrimaryButton label="前往地图添加" onPress={() => router.navigate('/(tabs)')} />}
             />
           </View>
-        }
-        renderItem={({ item }) => (
-          <View>
-            <SpotCard
-              title={item.name}
-              address={
-                item.formattedAddress?.trim() ||
-                [item.district, item.addressHint].map((value) => value.trim()).filter(Boolean).join(' · ') ||
-                '地址待补充'
-              }
-              photoUri={item.photoUris?.[0]}
-              badges={
-                <>
-                  <StatusBadge label="我添加的" variant="user" />
-                  <StatusBadge
-                    label={item.submissionStatus === 'pending_review' ? '待审核' : '仅本机保存'}
-                    variant={item.submissionStatus === 'pending_review' ? 'pending' : 'local'}
+        ) : (
+          groupedSpots.map((group) => (
+            <View key={group.key} style={styles.groupSection}>
+              <View style={styles.groupHeader}>
+                <Text style={styles.groupTitle}>{group.title}</Text>
+                <Text style={styles.groupCount}>{group.spots.length} 个</Text>
+              </View>
+              {group.spots.map((item) => {
+                const statusMeta = getSpotStatusMeta(item);
+
+                return (
+                  <SpotCard
+                    key={item.id}
+                    title={item.name}
+                    address={
+                      item.formattedAddress?.trim() ||
+                      [item.district, item.addressHint]
+                        .map((value) => value.trim())
+                        .filter(Boolean)
+                        .join(' · ') ||
+                      '地址待补充'
+                    }
+                    photoUri={item.photoUris?.[0]}
+                    badges={
+                      <>
+                        <StatusBadge label={statusMeta.label} variant={statusMeta.variant} />
+                        <StatusBadge label={SPOT_TYPE_LABELS[item.spotType]} variant="system" />
+                      </>
+                    }
+                    tags={item.tags.slice(0, 3)}
+                    onPressTop={() => handleSelectSpot(item.id)}
+                    footer={
+                      item.submissionStatus !== 'pending_review' && !item.verified ? (
+                        <PrimaryButton
+                          label="提交审核"
+                          onPress={() => handleSubmitForReview(item.id)}
+                          style={styles.submitButton}
+                        />
+                      ) : null
+                    }
                   />
-                </>
-              }
-              tags={item.tags.slice(0, 3)}
-              onPressTop={() => handleSelectSpot(item.id)}
-              footer={
-                item.submissionStatus !== 'pending_review' ? (
-                  <PrimaryButton
-                    label="提交审核"
-                    onPress={() => handleSubmitForReview(item.id)}
-                    style={styles.submitButton}
-                  />
-                ) : null
-              }
-            />
-          </View>
+                );
+              })}
+            </View>
+          ))
         )}
-      />
+      </ScrollView>
     </View>
   );
 }
@@ -103,10 +150,29 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   listHeader: {
-    marginBottom: theme.spacing.xs,
+    marginBottom: theme.spacing.sm,
   },
   listEmpty: {
     marginTop: theme.spacing.sm,
+  },
+  groupSection: {
+    marginBottom: theme.spacing.sm,
+  },
+  groupHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: theme.spacing.xs,
+  },
+  groupTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: theme.colors.textPrimary,
+  },
+  groupCount: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    fontWeight: '600',
   },
   submitButton: {
     marginTop: theme.spacing.md,
