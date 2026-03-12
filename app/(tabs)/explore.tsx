@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { usePetMapStore } from '@/store/petmap-store';
 import { formatDistance, getDistanceMeters } from '@/utils/distance';
@@ -321,46 +321,75 @@ export default function ExploreScreen() {
           }
 
           const spot = item.spot;
+          const displayAddress =
+            spot.formattedAddress?.trim() ||
+            [spot.district, spot.addressHint].map((value) => value.trim()).filter(Boolean).join(' · ') ||
+            '地址待补充';
 
           return (
-            <Pressable onPress={() => handleSelectSpot(spot.id)} style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.name}>{spot.name}</Text>
-              </View>
-              <View style={styles.badgeRow}>
-                <Text style={styles.favoriteStatus}>
-                  {isFavorite(spot.id) ? '已收藏' : '未收藏'}
+            <View style={styles.card}>
+              <Pressable onPress={() => handleSelectSpot(spot.id)}>
+                <View style={styles.cardTopRow}>
+                  {spot.photoUris?.[0] ? (
+                    <Image source={{ uri: spot.photoUris[0] }} style={styles.thumbnail} />
+                  ) : (
+                    <View style={styles.thumbnailPlaceholder}>
+                      <Text style={styles.thumbnailPlaceholderText}>暂无图片</Text>
+                    </View>
+                  )}
+                  <View style={styles.cardTopMeta}>
+                    <View style={styles.cardHeader}>
+                      <Text style={styles.name}>{spot.name}</Text>
+                    </View>
+                    <View style={styles.badgeRow}>
+                      <Text style={styles.favoriteStatus}>
+                        {isFavorite(spot.id) ? '已收藏' : '未收藏'}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.sourceBadge,
+                          spot.source === 'user' ? styles.userSourceBadge : styles.systemSourceBadge,
+                        ]}>
+                        {spot.source === 'user' ? '我添加的' : '系统收录'}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+                <Text style={styles.meta}>{displayAddress}</Text>
+              </Pressable>
+
+              {spot.tags.length > 0 ? (
+                <ScrollView
+                  horizontal
+                  nestedScrollEnabled
+                  directionalLockEnabled
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.spotTagScroll}
+                  contentContainerStyle={styles.spotTagContent}>
+                  {spot.tags.map((tag) => (
+                    <Text key={`${spot.id}-${tag}`} style={styles.spotTagChip}>
+                      {tag}
+                    </Text>
+                  ))}
+                </ScrollView>
+              ) : null}
+
+              <Pressable onPress={() => handleSelectSpot(spot.id)}>
+                <Text style={styles.description} numberOfLines={2}>
+                  {spot.description}
                 </Text>
-                <Text
-                  style={[
-                    styles.sourceBadge,
-                    spot.source === 'user' ? styles.userSourceBadge : styles.systemSourceBadge,
-                  ]}>
-                  {spot.source === 'user' ? '我添加的' : '系统收录'}
-                </Text>
-              </View>
-              <Text style={styles.meta}>
-                {spot.district} · {spot.addressHint}
-              </Text>
-              <View style={styles.tagRow}>
-                {spot.tags.map((tag) => (
-                  <Text key={`${spot.id}-${tag}`} style={styles.spotTagChip}>
-                    {tag}
-                  </Text>
-                ))}
-              </View>
-              <Text style={styles.description}>{spot.description}</Text>
-              <View style={styles.cardFooter}>
-                {userLoc ? (
-                  <Text style={styles.distance}>
-                    距离你约 {formatDistance(getDistanceMeters(userLoc, { lat: spot.lat, lng: spot.lng }))}
-                  </Text>
-                ) : (
-                  <Text style={styles.distancePlaceholder}>尚未获取位置</Text>
-                )}
-                <Text style={styles.votes}>{spot.votes} votes</Text>
-              </View>
-            </Pressable>
+                <View style={styles.cardFooter}>
+                  {userLoc ? (
+                    <Text style={styles.distance}>
+                      距离你约 {formatDistance(getDistanceMeters(userLoc, { lat: spot.lat, lng: spot.lng }))}
+                    </Text>
+                  ) : (
+                    <Text style={styles.distancePlaceholder}>尚未获取位置</Text>
+                  )}
+                  <Text style={styles.votes}>{spot.votes} votes</Text>
+                </View>
+              </Pressable>
+            </View>
           );
         }}
       />
@@ -598,6 +627,35 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     padding: 18,
   },
+  cardTopRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  cardTopMeta: {
+    flex: 1,
+  },
+  thumbnail: {
+    width: 72,
+    height: 72,
+    borderRadius: 14,
+    backgroundColor: '#E5E7EB',
+  },
+  thumbnailPlaceholder: {
+    width: 72,
+    height: 72,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  thumbnailPlaceholderText: {
+    fontSize: 11,
+    color: '#6B7280',
+    textAlign: 'center',
+  },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -648,6 +706,13 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
     marginTop: 12,
+  },
+  spotTagScroll: {
+    marginTop: 12,
+  },
+  spotTagContent: {
+    gap: 8,
+    paddingBottom: 2,
   },
   spotTagChip: {
     borderRadius: 999,
