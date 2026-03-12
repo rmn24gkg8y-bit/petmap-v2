@@ -45,6 +45,7 @@ export default function TabOneScreen() {
   const [sheetVisibleHeight, setSheetVisibleHeight] = useState(136 + insets.bottom);
   const [formValues, setFormValues] = useState({
     name: '',
+    spotType: '' as '' | 'park' | 'cafe' | 'hospital' | 'store' | 'indoor' | 'other',
     district: '',
     addressHint: '',
     description: '',
@@ -357,6 +358,7 @@ export default function TabOneScreen() {
     });
     setFormValues({
       name: '',
+      spotType: '',
       district: '',
       addressHint: '',
       description: '',
@@ -402,6 +404,7 @@ export default function TabOneScreen() {
     }
 
     const name = formValues.name.trim();
+    const spotType = formValues.spotType;
     const district = formValues.district.trim();
     const addressHint = formValues.addressHint.trim();
     const formattedAddress = pendingFormattedAddress.trim();
@@ -418,6 +421,11 @@ export default function TabOneScreen() {
       return;
     }
 
+    if (!spotType) {
+      setFormError('请先选择地点类型');
+      return;
+    }
+
     if (modalMode === 'edit') {
       if (!editingSpotId || !selectedSpot || selectedSpot.source !== 'user') {
         return;
@@ -427,6 +435,7 @@ export default function TabOneScreen() {
         ...selectedSpot,
         id: editingSpotId,
         name,
+        spotType,
         district,
         addressHint,
         lat: pendingCoords.lat,
@@ -444,6 +453,7 @@ export default function TabOneScreen() {
         name,
         source: 'user' as const,
         submissionStatus: 'local' as const,
+        spotType,
         district,
         addressHint,
         formattedAddress: formattedAddress || undefined,
@@ -475,6 +485,7 @@ export default function TabOneScreen() {
     });
     setFormValues({
       name: selectedSpot.name,
+      spotType: selectedSpot.spotType,
       district: selectedSpot.district,
       addressHint: selectedSpot.addressHint,
       description: selectedSpot.description,

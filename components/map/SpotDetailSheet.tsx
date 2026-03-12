@@ -1,6 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import {
+  PET_FRIENDLY_LEVEL_LABELS,
+  SPOT_TYPE_LABELS,
+} from '@/constants/spotFormOptions';
 import { theme } from '@/constants/theme';
 import type { Spot } from '@/types/spot';
 
@@ -40,6 +44,7 @@ export function SpotDetailSheet({
       <Text style={styles.cardLabel}>当前选中地点</Text>
       <Text style={styles.spotTitle}>{selectedSpot.name}</Text>
       <View style={styles.badgeRow}>
+        <Text style={[styles.badge, styles.typeBadge]}>{SPOT_TYPE_LABELS[selectedSpot.spotType]}</Text>
         <Text
           style={[
             styles.badge,
@@ -58,6 +63,7 @@ export function SpotDetailSheet({
             {selectedSpot.submissionStatus === 'pending_review' ? '待审核' : '仅本机保存'}
           </Text>
         ) : null}
+        {selectedSpot.verified ? <Text style={[styles.badge, styles.verifiedBadge]}>已认证</Text> : null}
       </View>
       <View style={styles.addressBlock}>
         <Text style={styles.addressLabel}>
@@ -65,6 +71,26 @@ export function SpotDetailSheet({
         </Text>
         <Text style={styles.spotMetaText}>{selectedSpotDisplayAddress}</Text>
       </View>
+      {selectedSpot.merchantStatus === 'claimed' ? (
+        <Text style={styles.merchantHint}>商家已认领</Text>
+      ) : null}
+      {selectedSpot.petFriendlyLevel ||
+      selectedSpot.priceLevel ||
+      selectedSpot.businessHours ||
+      selectedSpot.contact ? (
+        <View style={styles.infoRow}>
+          {selectedSpot.petFriendlyLevel ? (
+            <Text style={styles.infoChip}>
+              友好度：{PET_FRIENDLY_LEVEL_LABELS[selectedSpot.petFriendlyLevel]}
+            </Text>
+          ) : null}
+          {selectedSpot.priceLevel ? <Text style={styles.infoChip}>消费：{selectedSpot.priceLevel}</Text> : null}
+          {selectedSpot.businessHours ? (
+            <Text style={styles.infoChip}>营业：{selectedSpot.businessHours}</Text>
+          ) : null}
+          {selectedSpot.contact ? <Text style={styles.infoChip}>电话：{selectedSpot.contact}</Text> : null}
+        </View>
+      ) : null}
       {selectedSpot.tags.length > 0 ? (
         <View style={styles.tagRow}>
           {selectedSpot.tags.map((tag) => (
@@ -216,6 +242,14 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surfaceMuted,
     color: theme.colors.textSecondary,
   },
+  typeBadge: {
+    backgroundColor: theme.colors.chipBackground,
+    color: theme.colors.textPrimary,
+  },
+  verifiedBadge: {
+    backgroundColor: '#DCFCE7',
+    color: theme.colors.success,
+  },
   pendingBadge: {
     backgroundColor: '#FFEDD5',
     color: theme.colors.warning,
@@ -232,6 +266,28 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surfaceMuted,
     padding: theme.spacing.sm,
+  },
+  merchantHint: {
+    marginTop: 8,
+    fontSize: 12,
+    color: theme.colors.accent,
+    fontWeight: '600',
+  },
+  infoRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
+    marginTop: 10,
+  },
+  infoChip: {
+    borderRadius: theme.radii.pill,
+    backgroundColor: theme.colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    fontSize: 12,
+    color: theme.colors.textSecondary,
   },
   addressLabel: {
     fontSize: 12,

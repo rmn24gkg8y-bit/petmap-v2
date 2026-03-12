@@ -1,10 +1,17 @@
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { DISTRICT_OPTIONS, TAG_OPTIONS } from '@/constants/spotFormOptions';
+import {
+  DISTRICT_OPTIONS,
+  SPOT_TYPE_LABELS,
+  SPOT_TYPE_OPTIONS,
+  TAG_OPTIONS,
+} from '@/constants/spotFormOptions';
 import { theme } from '@/constants/theme';
+import type { Spot } from '@/types/spot';
 
 type SpotFormValues = {
   name: string;
+  spotType: Spot['spotType'] | '';
   district: string;
   addressHint: string;
   description: string;
@@ -62,6 +69,32 @@ export function SpotFormModal({
               placeholder="地点名称"
               style={styles.input}
             />
+            <View style={styles.optionSection}>
+              <Text style={styles.optionLabel}>地点类型</Text>
+              <View style={styles.chipGroup}>
+                {SPOT_TYPE_OPTIONS.map((spotType) => {
+                  const isSelected = formValues.spotType === spotType;
+
+                  return (
+                    <Pressable
+                      key={spotType}
+                      onPress={() => onUpdateField('spotType', spotType)}
+                      style={[
+                        styles.optionChip,
+                        isSelected ? styles.optionChipActive : styles.optionChipInactive,
+                      ]}>
+                      <Text
+                        style={[
+                          styles.optionChipText,
+                          isSelected ? styles.optionChipTextActive : styles.optionChipTextInactive,
+                        ]}>
+                        {SPOT_TYPE_LABELS[spotType]}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
             <View style={styles.formattedAddressSection}>
               <Text style={styles.formattedAddressLabel}>真实地址</Text>
               <View style={styles.formattedAddressBox}>
