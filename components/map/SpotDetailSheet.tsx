@@ -2,7 +2,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
-  PET_FRIENDLY_LEVEL_LABELS,
   SPOT_TYPE_LABELS,
 } from '@/constants/spotFormOptions';
 import { theme } from '@/constants/theme';
@@ -24,6 +23,23 @@ type SpotDetailSheetProps = {
   onRemoveSpotPhoto: (uri: string) => void;
 };
 
+const PET_FRIENDLY_DISPLAY_LABELS: Record<'high' | 'medium' | 'low', string> = {
+  high: '非常友好',
+  medium: '一般友好',
+  low: '需确认',
+};
+
+const PRICE_LEVEL_DISPLAY_LABELS: Record<'$' | '$$' | '$$$', string> = {
+  $: '$',
+  $$: '$$',
+  $$$: '$$$',
+};
+
+const MERCHANT_STATUS_DISPLAY_LABELS: Record<'none' | 'claimed', string> = {
+  none: '未认领',
+  claimed: '商家已认领',
+};
+
 export function SpotDetailSheet({
   selectedSpot,
   selectedSpotPhotoUris,
@@ -39,6 +55,14 @@ export function SpotDetailSheet({
   onPickSpotPhoto,
   onRemoveSpotPhoto,
 }: SpotDetailSheetProps) {
+  const hasCoreMetaInfo =
+    Boolean(selectedSpot.petFriendlyLevel) ||
+    Boolean(selectedSpot.priceLevel);
+  const hasAuxiliaryInfo =
+    Boolean(selectedSpot.merchantStatus) ||
+    Boolean(selectedSpot.businessHours) ||
+    Boolean(selectedSpot.contact);
+
   return (
     <View style={styles.card}>
       <Text style={styles.cardLabel}>当前选中地点</Text>
@@ -66,29 +90,30 @@ export function SpotDetailSheet({
         {selectedSpot.verified ? <Text style={[styles.badge, styles.verifiedBadge]}>已认证</Text> : null}
       </View>
       <View style={styles.addressBlock}>
-        <Text style={styles.addressLabel}>
-          {selectedSpot.formattedAddress ? '真实地址' : '位置说明'}
-        </Text>
         <Text style={styles.spotMetaText}>{selectedSpotDisplayAddress}</Text>
       </View>
-      {selectedSpot.merchantStatus === 'claimed' ? (
-        <Text style={styles.merchantHint}>商家已认领</Text>
-      ) : null}
-      {selectedSpot.petFriendlyLevel ||
-      selectedSpot.priceLevel ||
-      selectedSpot.businessHours ||
-      selectedSpot.contact ? (
+      <View style={styles.quickActionsRow}>
+        <Pressable onPress={onOpenNavigation} style={styles.quickActionChip}>
+          <Ionicons name="navigate-outline" size={15} color="#1F2937" />
+          <Text style={styles.quickActionChipText}>去这里</Text>
+        </Pressable>
+        <Pressable onPress={onShareSpotInfo} style={styles.quickActionChip}>
+          <Ionicons name="share-social-outline" size={15} color="#1F2937" />
+          <Text style={styles.quickActionChipText}>分享地点</Text>
+        </Pressable>
+      </View>
+      {hasCoreMetaInfo ? (
         <View style={styles.infoRow}>
           {selectedSpot.petFriendlyLevel ? (
             <Text style={styles.infoChip}>
-              友好度：{PET_FRIENDLY_LEVEL_LABELS[selectedSpot.petFriendlyLevel]}
+              友好度：{PET_FRIENDLY_DISPLAY_LABELS[selectedSpot.petFriendlyLevel]}
             </Text>
           ) : null}
-          {selectedSpot.priceLevel ? <Text style={styles.infoChip}>消费：{selectedSpot.priceLevel}</Text> : null}
-          {selectedSpot.businessHours ? (
-            <Text style={styles.infoChip}>营业：{selectedSpot.businessHours}</Text>
+          {selectedSpot.priceLevel ? (
+            <Text style={styles.infoChip}>
+              价格：{PRICE_LEVEL_DISPLAY_LABELS[selectedSpot.priceLevel]}
+            </Text>
           ) : null}
-          {selectedSpot.contact ? <Text style={styles.infoChip}>电话：{selectedSpot.contact}</Text> : null}
         </View>
       ) : null}
       {selectedSpot.tags.length > 0 ? (
@@ -147,23 +172,25 @@ export function SpotDetailSheet({
           </ScrollView>
         )}
       </View>
+      {hasAuxiliaryInfo ? (
+        <View style={styles.metaList}>
+          {selectedSpot.merchantStatus ? (
+            <Text style={styles.metaItem}>
+              商家状态：{MERCHANT_STATUS_DISPLAY_LABELS[selectedSpot.merchantStatus]}
+            </Text>
+          ) : null}
+          {selectedSpot.businessHours ? (
+            <Text style={styles.metaItem}>营业时间：{selectedSpot.businessHours}</Text>
+          ) : null}
+          {selectedSpot.contact ? <Text style={styles.metaItem}>联系方式：{selectedSpot.contact}</Text> : null}
+        </View>
+      ) : null}
       <Text style={styles.cardDescription}>
         {selectedSpot.description || '暂无地点简介，后续可以继续补充。'}
       </Text>
       <View style={styles.detailMetaRow}>
         <Text style={styles.detailMetaLabel}>热度</Text>
         <Text style={styles.votes}>{selectedSpot.votes} votes</Text>
-      </View>
-
-      <View style={styles.spotActionsRow}>
-        <Pressable onPress={onOpenNavigation} style={styles.spotActionChip}>
-          <Ionicons name="navigate-outline" size={15} color="#1F2937" />
-          <Text style={styles.spotActionChipText}>去这里</Text>
-        </Pressable>
-        <Pressable onPress={onShareSpotInfo} style={styles.spotActionChip}>
-          <Ionicons name="share-social-outline" size={15} color="#1F2937" />
-          <Text style={styles.spotActionChipText}>分享地点</Text>
-        </Pressable>
       </View>
 
       <View style={styles.actions}>
@@ -259,19 +286,13 @@ const styles = StyleSheet.create({
     color: theme.colors.success,
   },
   addressBlock: {
-    marginTop: 12,
-    gap: 6,
+    marginTop: 10,
     borderRadius: theme.radii.md,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surfaceMuted,
-    padding: theme.spacing.sm,
-  },
-  merchantHint: {
-    marginTop: 8,
-    fontSize: 12,
-    color: theme.colors.accent,
-    fontWeight: '600',
+    paddingHorizontal: 9,
+    paddingVertical: 6,
   },
   infoRow: {
     flexDirection: 'row',
@@ -289,21 +310,47 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: theme.colors.textSecondary,
   },
-  addressLabel: {
-    fontSize: 12,
-    fontWeight: '600',
+  metaList: {
+    marginTop: 8,
+    gap: 6,
+  },
+  metaItem: {
+    fontSize: 13,
+    lineHeight: 18,
     color: theme.colors.textSecondary,
   },
   spotMetaText: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 12,
+    lineHeight: 16,
+    color: theme.colors.textSecondary,
+  },
+  quickActionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
+    marginTop: 10,
+  },
+  quickActionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: theme.radii.pill,
+    backgroundColor: theme.colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  quickActionChipText: {
+    fontSize: 12,
+    fontWeight: '600',
     color: theme.colors.textPrimary,
   },
   tagRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: theme.spacing.xs,
-    marginTop: 14,
+    marginTop: 10,
   },
   tagChip: {
     borderRadius: theme.radii.pill,
@@ -437,28 +484,6 @@ const styles = StyleSheet.create({
   votes: {
     fontSize: 13,
     fontWeight: '700',
-    color: theme.colors.textPrimary,
-  },
-  spotActionsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.xs,
-    marginTop: 12,
-  },
-  spotActionChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderRadius: theme.radii.pill,
-    backgroundColor: theme.colors.surfaceMuted,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  spotActionChipText: {
-    fontSize: 12,
-    fontWeight: '600',
     color: theme.colors.textPrimary,
   },
   actions: {
