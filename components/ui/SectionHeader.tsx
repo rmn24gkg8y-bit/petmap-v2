@@ -26,13 +26,13 @@ const styles = StyleSheet.create({
   eyebrow: {
     fontSize: 12,
     fontWeight: '700',
-    letterSpacing: 0.8,
+    letterSpacing: 0.9,
     textTransform: 'uppercase',
     color: theme.colors.primary,
   },
   title: {
     marginTop: theme.spacing.xs,
-    fontSize: 30,
+    fontSize: 32,
     fontWeight: '800',
     color: theme.colors.textPrimary,
   },

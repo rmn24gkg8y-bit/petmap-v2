@@ -47,7 +47,8 @@ const styles = StyleSheet.create({
   base: {
     borderRadius: theme.radii.pill,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 5,
+    borderWidth: 1,
   },
   text: {
     fontSize: 12,
@@ -55,36 +56,42 @@ const styles = StyleSheet.create({
   },
   system: {
     backgroundColor: theme.colors.surfaceMuted,
+    borderColor: theme.colors.border,
   },
   systemText: {
     color: theme.colors.textSecondary,
   },
   user: {
     backgroundColor: theme.colors.primarySoft,
+    borderColor: '#D7E5FF',
   },
   userText: {
     color: theme.colors.primary,
   },
   pending: {
     backgroundColor: '#FFEDD5',
+    borderColor: '#FED7AA',
   },
   pendingText: {
     color: theme.colors.warning,
   },
   local: {
     backgroundColor: '#DCFCE7',
+    borderColor: '#BBF7D0',
   },
   localText: {
     color: theme.colors.success,
   },
   favorite: {
     backgroundColor: theme.colors.primarySoft,
+    borderColor: '#D7E5FF',
   },
   favoriteText: {
     color: theme.colors.primary,
   },
   favoriteInactive: {
-    backgroundColor: theme.colors.surfaceMuted,
+    backgroundColor: theme.colors.chipBackground,
+    borderColor: theme.colors.border,
   },
   favoriteInactiveText: {
     color: theme.colors.textSecondary,

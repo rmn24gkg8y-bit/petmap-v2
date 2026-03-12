@@ -123,7 +123,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.cardBackground,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    padding: 18,
+    padding: 16,
     ...theme.shadows.card,
   },
   topRow: {
@@ -137,7 +137,9 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 14,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: theme.colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   thumbnailPlaceholder: {
     width: 72,
@@ -169,6 +171,7 @@ const styles = StyleSheet.create({
   address: {
     marginTop: theme.spacing.sm,
     fontSize: 13,
+    lineHeight: 19,
     color: theme.colors.textSecondary,
   },
   tagsRow: {

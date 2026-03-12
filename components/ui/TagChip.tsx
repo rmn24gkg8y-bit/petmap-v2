@@ -31,6 +31,7 @@ export function TagChip({ label, active = false, onPress, compact = false }: Tag
 const styles = StyleSheet.create({
   base: {
     borderRadius: theme.radii.pill,
+    borderWidth: 1,
   },
   normal: {
     paddingHorizontal: 12,
@@ -38,13 +39,15 @@ const styles = StyleSheet.create({
   },
   compact: {
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 5,
   },
   active: {
     backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
   },
   inactive: {
-    backgroundColor: theme.colors.primarySoft,
+    backgroundColor: theme.colors.chipBackground,
+    borderColor: theme.colors.border,
   },
   text: {
     fontWeight: '600',
@@ -55,6 +58,6 @@ const styles = StyleSheet.create({
   },
   inactiveText: {
     fontSize: 12,
-    color: theme.colors.primary,
+    color: theme.colors.textSecondary,
   },
 });
