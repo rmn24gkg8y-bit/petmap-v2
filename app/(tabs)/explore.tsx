@@ -70,6 +70,13 @@ export default function ExploreScreen() {
     [filteredSpots]
   );
   const selectedSpotTypeLabel = selectedSpotType ? SPOT_TYPE_LABELS[selectedSpotType] : '全部类型';
+  const hasActiveFilters =
+    searchQuery.trim().length > 0 ||
+    selectedTag !== null ||
+    selectedSpotType !== null ||
+    showFavoritesOnly ||
+    showUserOnly ||
+    sortMode !== 'popular';
 
   function handleSelectSpot(id: string) {
     setSelectedSpot(id);
@@ -189,13 +196,20 @@ export default function ExploreScreen() {
                   <Text style={styles.resultSummary}>
                     {SORT_MODE_LABELS[sortMode]} · {selectedSpotTypeLabel} · {selectedTag ?? '全部标签'} · {filteredSpots.length} 个结果
                   </Text>
-                  <Pressable
-                    onPress={() => setIsTagExpanded((current) => !current)}
-                    style={styles.moreFilterButton}>
-                    <Text style={styles.moreFilterButtonText}>
-                      {isTagExpanded ? '收起标签' : '更多筛选'}
-                    </Text>
-                  </Pressable>
+                  <View style={styles.stickyFooterActions}>
+                    {hasActiveFilters ? (
+                      <Pressable onPress={resetExploreFilters} style={styles.clearAllButton}>
+                        <Text style={styles.clearAllButtonText}>清空筛选</Text>
+                      </Pressable>
+                    ) : null}
+                    <Pressable
+                      onPress={() => setIsTagExpanded((current) => !current)}
+                      style={styles.moreFilterButton}>
+                      <Text style={styles.moreFilterButtonText}>
+                        {isTagExpanded ? '收起标签' : '更多筛选'}
+                      </Text>
+                    </Pressable>
+                  </View>
                 </View>
               </View>
             );
@@ -379,6 +393,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: theme.spacing.xs,
   },
+  stickyFooterActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+  },
   resultSummary: {
     flex: 1,
     fontSize: 12,
@@ -396,6 +415,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: theme.colors.primary,
+  },
+  clearAllButton: {
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.cardBackground,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  clearAllButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.textSecondary,
   },
   expandedTagSection: {
     marginTop: 6,
