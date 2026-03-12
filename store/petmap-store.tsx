@@ -39,7 +39,7 @@ type PetMapStoreValue = {
   favoriteIds: string[];
   recentViewedIds: string[];
   searchQuery: string;
-  selectedTag: string | null;
+  selectedTags: string[];
   selectedSpotType: Spot['spotType'] | null;
   showFavoritesOnly: boolean;
   showUserOnly: boolean;
@@ -69,7 +69,8 @@ type PetMapStoreValue = {
   toggleFavorite: (id: string) => void;
   addRecentViewed: (id: string) => void;
   setSearchQuery: (value: string) => void;
-  setSelectedTag: (tag: string | null) => void;
+  toggleSelectedTag: (tag: string) => void;
+  clearSelectedTags: () => void;
   setSelectedSpotType: (spotType: Spot['spotType'] | null) => void;
   setShowFavoritesOnly: (value: boolean) => void;
   setShowUserOnly: (value: boolean) => void;
@@ -93,7 +94,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [recentViewedIds, setRecentViewedIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedSpotType, setSelectedSpotType] = useState<Spot['spotType'] | null>(null);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [showUserOnly, setShowUserOnly] = useState(false);
@@ -279,9 +280,11 @@ export function PetMapProvider({ children }: PropsWithChildren) {
       ? filteredByFavorites.filter((spot) => spot.source === 'user')
       : filteredByFavorites;
     const filteredByTag =
-      selectedTag === null
+      selectedTags.length === 0
         ? filteredBySource
-        : filteredBySource.filter((spot) => spot.tags.includes(selectedTag));
+        : filteredBySource.filter((spot) =>
+            selectedTags.every((tag) => spot.tags.includes(tag))
+          );
     const filteredBySpotType =
       selectedSpotType === null
         ? filteredByTag
@@ -313,7 +316,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
       favoriteIds,
       recentViewedIds,
       searchQuery,
-      selectedTag,
+      selectedTags,
       selectedSpotType,
       showFavoritesOnly,
       showUserOnly,
@@ -468,14 +471,18 @@ export function PetMapProvider({ children }: PropsWithChildren) {
         ),
       addRecentViewed,
       setSearchQuery,
-      setSelectedTag,
+      toggleSelectedTag: (tag: string) =>
+        setSelectedTags((current) =>
+          current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag]
+        ),
+      clearSelectedTags: () => setSelectedTags([]),
       setSelectedSpotType,
       setShowFavoritesOnly,
       setShowUserOnly,
       setSortMode,
       resetExploreFilters: () => {
         setSearchQuery('');
-        setSelectedTag(null);
+        setSelectedTags([]);
         setSelectedSpotType(null);
         setShowFavoritesOnly(false);
         setShowUserOnly(false);
@@ -491,7 +498,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
     recentViewedIds,
     searchQuery,
     selectedSpotId,
-    selectedTag,
+    selectedTags,
     selectedSpotType,
     showFavoritesOnly,
     showUserOnly,
