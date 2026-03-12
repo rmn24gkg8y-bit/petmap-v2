@@ -1,4 +1,3 @@
-import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { router } from 'expo-router';
@@ -6,24 +5,22 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
-  Image,
   Linking,
-  Modal,
   PanResponder,
   Platform,
-  Pressable,
   ScrollView,
   Share,
   StyleSheet,
-  Text,
-  TextInput,
   View,
   useWindowDimensions,
 } from 'react-native';
 import MapView, { Marker, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { DISTRICT_OPTIONS, TAG_OPTIONS } from '@/constants/spotFormOptions';
+import { MapEmptySheet } from '@/components/map/MapEmptySheet';
+import { MapQuickActions } from '@/components/map/MapQuickActions';
+import { SpotDetailSheet } from '@/components/map/SpotDetailSheet';
+import { SpotFormModal } from '@/components/map/SpotFormModal';
 import { theme } from '@/constants/theme';
 import { usePetMapStore } from '@/store/petmap-store';
 
@@ -623,10 +620,6 @@ export default function TabOneScreen() {
     }
   }
 
-  function getQuickActionBadgeCount(count: number) {
-    return count > 99 ? '99+' : String(count);
-  }
-
   const selectedSpotPhotoUris = selectedSpot?.photoUris ?? [];
   const shouldUseReadonlyDistrict =
     Boolean(pendingFormattedAddress.trim()) &&
@@ -688,25 +681,13 @@ export default function TabOneScreen() {
         })}
       </MapView>
 
-      <View pointerEvents="box-none" style={[styles.quickActions, { bottom: quickActionsBottom }]}>
-        <Pressable onPress={() => router.push('/my-favorites')} style={styles.quickActionButton}>
-          <Ionicons name="star" size={19} color="#0F172A" />
-          <View style={styles.quickActionBadge}>
-            <Text style={styles.quickActionBadgeText}>
-              {getQuickActionBadgeCount(favoriteCount)}
-            </Text>
-          </View>
-        </Pressable>
-
-        <Pressable onPress={() => router.push('/my-spots')} style={styles.quickActionButton}>
-          <Ionicons name="location" size={19} color="#0F172A" />
-          <View style={styles.quickActionBadge}>
-            <Text style={styles.quickActionBadgeText}>
-              {getQuickActionBadgeCount(userSpots.length)}
-            </Text>
-          </View>
-        </Pressable>
-      </View>
+      <MapQuickActions
+        bottom={quickActionsBottom}
+        favoriteCount={favoriteCount}
+        userSpotCount={userSpots.length}
+        onPressFavorites={() => router.push('/my-favorites')}
+        onPressMySpots={() => router.push('/my-spots')}
+      />
 
       <Animated.View
         style={[
@@ -726,330 +707,46 @@ export default function TabOneScreen() {
           contentContainerStyle={styles.sheetContent}
           showsVerticalScrollIndicator={false}>
           {selectedSpot ? (
-            <View style={styles.card}>
-              <Text style={styles.cardLabel}>当前选中地点</Text>
-              <Text style={styles.spotTitle}>{selectedSpot.name}</Text>
-              <View style={styles.badgeRow}>
-                <Text
-                  style={[
-                    styles.badge,
-                    selectedSpot.source === 'user' ? styles.userBadge : styles.systemBadge,
-                  ]}>
-                  {selectedSpot.source === 'user' ? '我添加的' : '系统收录'}
-                </Text>
-                {selectedSpot.source === 'user' ? (
-                  <Text
-                    style={[
-                      styles.badge,
-                      selectedSpot.submissionStatus === 'pending_review'
-                        ? styles.pendingBadge
-                        : styles.localBadge,
-                    ]}>
-                    {selectedSpot.submissionStatus === 'pending_review' ? '待审核' : '仅本机保存'}
-                  </Text>
-                ) : null}
-              </View>
-              <View style={styles.addressBlock}>
-                <Text style={styles.addressLabel}>
-                  {selectedSpot.formattedAddress ? '真实地址' : '位置说明'}
-                </Text>
-                <Text style={styles.spotMetaText}>{selectedSpotDisplayAddress}</Text>
-              </View>
-              {selectedSpot.tags.length > 0 ? (
-                <View style={styles.tagRow}>
-                  {selectedSpot.tags.map((tag) => (
-                    <Text key={tag} style={styles.tagChip}>
-                      {tag}
-                    </Text>
-                  ))}
-                </View>
-              ) : null}
-              <View style={styles.photoSection}>
-                <View style={styles.photoSectionHeader}>
-                  <Text style={styles.photoSectionTitle}>图片预览</Text>
-                  {selectedSpot.source === 'user' ? (
-                    <Pressable onPress={handlePickSpotPhoto} style={styles.photoAddButton}>
-                      <Ionicons name="add" size={14} color="#1D4ED8" />
-                      <Text style={styles.photoAddButtonText}>添加图片</Text>
-                    </Pressable>
-                  ) : (
-                    <Text style={styles.photoSectionHint}>即将支持</Text>
-                  )}
-                </View>
-                {selectedSpot.source === 'user' ? (
-                  selectedSpotPhotoUris.length > 0 ? (
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.photoRow}>
-                      {selectedSpotPhotoUris.map((uri) => (
-                        <View key={`${selectedSpot.id}-${uri}`} style={styles.userPhotoCard}>
-                          <Image source={{ uri }} style={styles.userPhotoImage} />
-                          <Pressable
-                            onPress={() => handleRemoveSpotPhoto(uri)}
-                            style={styles.photoRemoveButton}>
-                            <Ionicons name="close" size={12} color="#FFFFFF" />
-                          </Pressable>
-                        </View>
-                      ))}
-                    </ScrollView>
-                  ) : (
-                    <Pressable onPress={handlePickSpotPhoto} style={styles.photoEmptyCard}>
-                      <Ionicons name="images-outline" size={18} color="#6B7280" />
-                      <Text style={styles.photoEmptyText}>还没有图片，点击添加第一张</Text>
-                    </Pressable>
-                  )
-                ) : (
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.photoRow}>
-                    {[1, 2, 3].map((item) => (
-                      <View key={item} style={styles.photoPlaceholderCard}>
-                        <Text style={styles.photoPlaceholderIcon}>+</Text>
-                        <Text style={styles.photoPlaceholderText}>未来可展示地点图片</Text>
-                      </View>
-                    ))}
-                  </ScrollView>
-                )}
-              </View>
-              <Text style={styles.cardDescription}>
-                {selectedSpot.description || '暂无地点简介，后续可以继续补充。'}
-              </Text>
-              <View style={styles.detailMetaRow}>
-                <Text style={styles.detailMetaLabel}>热度</Text>
-                <Text style={styles.votes}>{selectedSpot.votes} votes</Text>
-              </View>
-
-              <View style={styles.spotActionsRow}>
-                <Pressable onPress={handleOpenNavigation} style={styles.spotActionChip}>
-                  <Ionicons name="navigate-outline" size={15} color="#1F2937" />
-                  <Text style={styles.spotActionChipText}>去这里</Text>
-                </Pressable>
-                <Pressable onPress={handleShareSpotInfo} style={styles.spotActionChip}>
-                  <Ionicons name="share-social-outline" size={15} color="#1F2937" />
-                  <Text style={styles.spotActionChipText}>分享地点</Text>
-                </Pressable>
-              </View>
-
-              <View style={styles.actions}>
-                <Pressable
-                  onPress={() => toggleFavorite(selectedSpot.id)}
-                  style={styles.primaryActionButton}>
-                  <Text style={styles.primaryActionText}>
-                    {isFavorite(selectedSpot.id) ? '已收藏' : '收藏'}
-                  </Text>
-                </Pressable>
-
-                <Pressable onPress={clearSelectedSpot} style={styles.secondaryButton}>
-                  <Text style={styles.secondaryButtonText}>清空选择</Text>
-                </Pressable>
-
-                {selectedSpot.source === 'user' &&
-                selectedSpot.submissionStatus !== 'pending_review' ? (
-                  <Pressable onPress={handleSubmitForReview} style={styles.secondaryButton}>
-                    <Text style={styles.secondaryButtonText}>提交审核</Text>
-                  </Pressable>
-                ) : null}
-
-                {selectedSpot.source === 'user' ? (
-                  <Pressable onPress={handleEditSpot} style={styles.secondaryButton}>
-                    <Text style={styles.secondaryButtonText}>编辑地点</Text>
-                  </Pressable>
-                ) : null}
-
-                {selectedSpot.source === 'user' ? (
-                  <Pressable onPress={handleDeleteSpot} style={styles.dangerButton}>
-                    <Text style={styles.dangerButtonText}>删除地点</Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            </View>
+            <SpotDetailSheet
+              selectedSpot={selectedSpot}
+              selectedSpotPhotoUris={selectedSpotPhotoUris}
+              selectedSpotDisplayAddress={selectedSpotDisplayAddress}
+              isFavorite={isFavorite(selectedSpot.id)}
+              onToggleFavorite={() => toggleFavorite(selectedSpot.id)}
+              onClearSelected={clearSelectedSpot}
+              onSubmitForReview={handleSubmitForReview}
+              onEditSpot={handleEditSpot}
+              onDeleteSpot={handleDeleteSpot}
+              onOpenNavigation={handleOpenNavigation}
+              onShareSpotInfo={handleShareSpotInfo}
+              onPickSpotPhoto={handlePickSpotPhoto}
+              onRemoveSpotPhoto={handleRemoveSpotPhoto}
+            />
           ) : (
-            <View>
-              <View style={styles.header}>
-                <Text style={styles.eyebrow}>地图总览</Text>
-                <Text style={styles.title}>PetMap</Text>
-                <Text style={styles.description}>
-                  查看宠物友好地点，并继续管理你的本地点位。
-                </Text>
-                <View style={styles.statsRow}>
-                  <View style={styles.statCard}>
-                    <Text style={styles.statValue}>{totalSpots}</Text>
-                    <Text style={styles.statLabel}>当前地点数</Text>
-                  </View>
-                  <Pressable onPress={() => router.push('/my-favorites')} style={styles.statCard}>
-                    <Text style={styles.statValue}>{favoriteCount}</Text>
-                    <Text style={styles.statLabel}>已收藏</Text>
-                    <Text style={styles.statAction}>查看我的收藏</Text>
-                  </Pressable>
-                </View>
-              </View>
-
-              <View style={styles.emptyCard}>
-                <Text style={styles.emptyTitle}>当前没有选中地点</Text>
-                <Text style={styles.emptyDescription}>
-                  可以先去 Explore 查看地点，或在地图上长按新增一个地点。
-                </Text>
-
-                <View style={styles.actions}>
-                  <Pressable
-                    onPress={() => router.navigate('/(tabs)/explore')}
-                    style={styles.primaryButton}>
-                    <Text style={styles.primaryButtonText}>前往 Explore</Text>
-                  </Pressable>
-                </View>
-              </View>
-            </View>
+            <MapEmptySheet
+              totalSpots={totalSpots}
+              favoriteCount={favoriteCount}
+              onPressFavorites={() => router.push('/my-favorites')}
+              onPressExplore={() => router.navigate('/(tabs)/explore')}
+            />
           )}
         </ScrollView>
       </Animated.View>
 
-      <Modal
-        animationType="slide"
-        transparent
+      <SpotFormModal
         visible={isCreateModalVisible}
-        onRequestClose={closeCreateModal}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>
-              {modalMode === 'edit' ? '编辑地点' : '新增地点'}
-            </Text>
-            <Text style={styles.modalSubtitle}>
-              {modalMode === 'edit'
-                ? '修改当前地点信息，坐标将保持不变。'
-                : '长按位置已记录，补充基础信息后即可保存。'}
-            </Text>
-            <Text style={styles.modalHelperText}>标签支持使用逗号分隔，当前仅保存在本机。</Text>
-
-            <ScrollView
-              style={styles.modalForm}
-              contentContainerStyle={styles.modalFormContent}
-              showsVerticalScrollIndicator={false}>
-              <TextInput
-                value={formValues.name}
-                onChangeText={(value) => updateFormValue('name', value)}
-                placeholder="地点名称"
-                style={styles.input}
-              />
-              <View style={styles.formattedAddressSection}>
-                <Text style={styles.formattedAddressLabel}>真实地址</Text>
-                <View style={styles.formattedAddressBox}>
-                  <Text style={styles.formattedAddressText}>
-                    {isResolvingPendingAddress
-                      ? '正在获取真实地址...'
-                      : pendingFormattedAddress || '暂未获取到真实地址'}
-                  </Text>
-                </View>
-                {modalMode === 'create' &&
-                !isResolvingPendingAddress &&
-                !pendingFormattedAddress.trim() ? (
-                  <Text style={styles.formattedAddressHintText}>
-                    当前网络环境下暂未获取到真实地址，可手动选择所属区后继续保存
-                  </Text>
-                ) : null}
-              </View>
-              <TextInput
-                value={formValues.addressHint}
-                onChangeText={(value) => updateFormValue('addressHint', value)}
-                placeholder="位置补充说明（选填），例如靠近北门 / 入口在侧边"
-                style={styles.input}
-              />
-              {shouldUseReadonlyDistrict ? (
-                <View style={styles.formattedAddressSection}>
-                  <Text style={styles.formattedAddressLabel}>所属区</Text>
-                  <View style={styles.formattedAddressBox}>
-                    <Text style={styles.formattedAddressText}>{formValues.district}</Text>
-                  </View>
-                </View>
-              ) : (
-                <View style={styles.optionSection}>
-                  <Text style={styles.optionLabel}>所属区</Text>
-                  <View style={styles.chipGroup}>
-                    {DISTRICT_OPTIONS.map((district) => {
-                      const isSelected = formValues.district === district;
-
-                      return (
-                        <Pressable
-                          key={district}
-                          onPress={() => updateFormValue('district', district)}
-                          style={[
-                            styles.optionChip,
-                            isSelected ? styles.optionChipActive : styles.optionChipInactive,
-                          ]}>
-                          <Text
-                            style={[
-                              styles.optionChipText,
-                              isSelected
-                                ? styles.optionChipTextActive
-                                : styles.optionChipTextInactive,
-                            ]}>
-                            {district}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-              )}
-              <TextInput
-                value={formValues.description}
-                onChangeText={(value) => updateFormValue('description', value)}
-                placeholder="地点描述（选填）"
-                style={[styles.input, styles.textarea]}
-                multiline
-              />
-              <View style={styles.optionSection}>
-                <Text style={styles.optionLabel}>标签</Text>
-                <View style={styles.chipGroup}>
-                  {TAG_OPTIONS.map((tag) => {
-                    const isSelected = formValues.tags.includes(tag);
-
-                    return (
-                      <Pressable
-                        key={tag}
-                        onPress={() => toggleTag(tag)}
-                        style={[
-                          styles.optionChip,
-                          isSelected ? styles.optionChipActive : styles.optionChipInactive,
-                        ]}>
-                        <Text
-                          style={[
-                            styles.optionChipText,
-                            isSelected
-                              ? styles.optionChipTextActive
-                              : styles.optionChipTextInactive,
-                          ]}>
-                          {tag}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-
-              {formError ? <Text style={styles.formErrorText}>{formError}</Text> : null}
-
-              {pendingCoords ? (
-                <Text style={styles.coordsText}>
-                  坐标：{pendingCoords.lat.toFixed(5)}, {pendingCoords.lng.toFixed(5)}
-                </Text>
-              ) : null}
-            </ScrollView>
-
-            <View style={styles.modalActions}>
-              <Pressable onPress={closeCreateModal} style={styles.modalSecondaryButton}>
-                <Text style={styles.modalSecondaryButtonText}>取消</Text>
-              </Pressable>
-              <Pressable onPress={handleSubmitSpot} style={styles.modalPrimaryButton}>
-                <Text style={styles.modalPrimaryButtonText}>
-                  {modalMode === 'edit' ? '保存修改' : '保存地点'}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        modalMode={modalMode}
+        formValues={formValues}
+        pendingFormattedAddress={pendingFormattedAddress}
+        isResolvingPendingAddress={isResolvingPendingAddress}
+        shouldUseReadonlyDistrict={shouldUseReadonlyDistrict}
+        formError={formError}
+        pendingCoords={pendingCoords}
+        onClose={closeCreateModal}
+        onSubmit={handleSubmitSpot}
+        onUpdateField={updateFormValue}
+        onToggleTag={toggleTag}
+      />
     </View>
   );
 }
