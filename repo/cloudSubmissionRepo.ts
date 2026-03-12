@@ -2,6 +2,10 @@ import type { Spot } from '@/types/spot';
 
 const SPOT_SUBMISSION_ENDPOINT = process.env.EXPO_PUBLIC_SPOT_SUBMISSION_ENDPOINT?.trim() ?? '';
 
+export function hasSpotSubmissionEndpointConfigured() {
+  return SPOT_SUBMISSION_ENDPOINT.length > 0;
+}
+
 type SpotSubmissionPayload = {
   id: string;
   name: string;

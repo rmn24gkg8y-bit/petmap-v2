@@ -11,7 +11,10 @@ import {
   fetchSystemSpotsFromCloud,
   getFallbackSystemSpots,
 } from '@/repo/cloudSpotsRepo';
-import { submitSpotForReviewToCloud } from '@/repo/cloudSubmissionRepo';
+import {
+  hasSpotSubmissionEndpointConfigured,
+  submitSpotForReviewToCloud,
+} from '@/repo/cloudSubmissionRepo';
 import {
   loadFormattedAddressBySpotId,
   loadFavoriteIds,
@@ -56,7 +59,11 @@ type PetMapStoreValue = {
   addSpotPhoto: (spotId: string, uri: string) => void;
   removeSpotPhoto: (spotId: string, uri: string) => void;
   setSpotFormattedAddress: (id: string, formattedAddress: string) => void;
-  submitSpotForReview: (id: string) => Promise<{ success: boolean; error?: string }>;
+  submitSpotForReview: (id: string) => Promise<{
+    success: boolean;
+    mode: 'cloud' | 'local';
+    error?: string;
+  }>;
   setSelectedSpot: (id: string) => void;
   clearSelectedSpot: () => void;
   toggleFavorite: (id: string) => void;
@@ -406,7 +413,25 @@ export function PetMapProvider({ children }: PropsWithChildren) {
           targetSpot.source !== 'user' ||
           targetSpot.submissionStatus === 'pending_review'
         ) {
-          return { success: false, error: '该地点当前无法提交审核' };
+          return {
+            success: false,
+            mode: 'local' as const,
+            error: '该地点当前无法提交审核',
+          };
+        }
+
+        if (!hasSpotSubmissionEndpointConfigured()) {
+          setUserCreatedSpots((current) =>
+            current.map((spot) =>
+              spot.id === id &&
+              spot.source === 'user' &&
+              (spot.submissionStatus === undefined || spot.submissionStatus === 'local')
+                ? { ...spot, submissionStatus: 'pending_review' }
+                : spot
+            )
+          );
+
+          return { success: true, mode: 'local' as const };
         }
 
         try {
@@ -421,12 +446,13 @@ export function PetMapProvider({ children }: PropsWithChildren) {
             )
           );
 
-          return { success: true };
+          return { success: true, mode: 'cloud' as const };
         } catch (error) {
           console.warn('[PetMapStore][submitSpotForReview] failed:', error);
 
           return {
             success: false,
+            mode: 'cloud' as const,
             error: error instanceof Error ? error.message : '提交失败，请稍后重试',
           };
         }
