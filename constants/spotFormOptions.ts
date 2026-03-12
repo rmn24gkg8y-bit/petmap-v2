@@ -1,4 +1,4 @@
-import type { PetFriendlyLevel, SpotType } from '@/types/spot';
+import type { PetFriendlyLevel, PriceLevel, SpotType } from '@/types/spot';
 
 export const DISTRICT_OPTIONS = [
   '黄浦区',
@@ -32,9 +32,13 @@ export const SPOT_TYPE_LABELS: Record<SpotType, string> = {
 
 export const PET_FRIENDLY_LEVEL_LABELS: Record<PetFriendlyLevel, string> = {
   high: '非常友好',
-  medium: '比较友好',
-  low: '一般',
+  medium: '一般友好',
+  low: '需确认',
 };
+
+export const PET_FRIENDLY_LEVEL_OPTIONS: PetFriendlyLevel[] = ['high', 'medium', 'low'];
+
+export const PRICE_LEVEL_OPTIONS: PriceLevel[] = ['$', '$$', '$$$'];
 
 export const TAG_OPTIONS = [
   '咖啡',

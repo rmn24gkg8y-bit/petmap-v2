@@ -2,8 +2,8 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 
 
 import {
   DISTRICT_OPTIONS,
-  SPOT_TYPE_LABELS,
-  SPOT_TYPE_OPTIONS,
+  PET_FRIENDLY_LEVEL_LABELS,
+  PET_FRIENDLY_LEVEL_OPTIONS,
   TAG_OPTIONS,
 } from '@/constants/spotFormOptions';
 import { theme } from '@/constants/theme';
@@ -11,10 +11,12 @@ import type { Spot } from '@/types/spot';
 
 type SpotFormValues = {
   name: string;
-  spotType: Spot['spotType'] | '';
   district: string;
   addressHint: string;
   description: string;
+  petFriendlyLevel: Spot['petFriendlyLevel'] | '';
+  businessHours: string;
+  contact: string;
   tags: string[];
 };
 
@@ -69,32 +71,6 @@ export function SpotFormModal({
               placeholder="地点名称"
               style={styles.input}
             />
-            <View style={styles.optionSection}>
-              <Text style={styles.optionLabel}>地点类型</Text>
-              <View style={styles.chipGroup}>
-                {SPOT_TYPE_OPTIONS.map((spotType) => {
-                  const isSelected = formValues.spotType === spotType;
-
-                  return (
-                    <Pressable
-                      key={spotType}
-                      onPress={() => onUpdateField('spotType', spotType)}
-                      style={[
-                        styles.optionChip,
-                        isSelected ? styles.optionChipActive : styles.optionChipInactive,
-                      ]}>
-                      <Text
-                        style={[
-                          styles.optionChipText,
-                          isSelected ? styles.optionChipTextActive : styles.optionChipTextInactive,
-                        ]}>
-                        {SPOT_TYPE_LABELS[spotType]}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
             <View style={styles.formattedAddressSection}>
               <Text style={styles.formattedAddressLabel}>真实地址</Text>
               <View style={styles.formattedAddressBox}>
@@ -157,6 +133,62 @@ export function SpotFormModal({
               placeholder="地点描述（选填）"
               style={[styles.input, styles.textarea]}
               multiline
+            />
+            <View style={styles.optionSection}>
+              <Text style={styles.optionLabel}>宠物友好度</Text>
+              <View style={styles.chipGroup}>
+                <Pressable
+                  onPress={() => onUpdateField('petFriendlyLevel', '')}
+                  style={[
+                    styles.optionChip,
+                    formValues.petFriendlyLevel === ''
+                      ? styles.optionChipActive
+                      : styles.optionChipInactive,
+                  ]}>
+                  <Text
+                    style={[
+                      styles.optionChipText,
+                      formValues.petFriendlyLevel === ''
+                        ? styles.optionChipTextActive
+                        : styles.optionChipTextInactive,
+                    ]}>
+                    未设置
+                  </Text>
+                </Pressable>
+                {PET_FRIENDLY_LEVEL_OPTIONS.map((level) => {
+                  const isSelected = formValues.petFriendlyLevel === level;
+
+                  return (
+                    <Pressable
+                      key={level}
+                      onPress={() => onUpdateField('petFriendlyLevel', level)}
+                      style={[
+                        styles.optionChip,
+                        isSelected ? styles.optionChipActive : styles.optionChipInactive,
+                      ]}>
+                      <Text
+                        style={[
+                          styles.optionChipText,
+                          isSelected ? styles.optionChipTextActive : styles.optionChipTextInactive,
+                        ]}>
+                        {PET_FRIENDLY_LEVEL_LABELS[level]}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+            <TextInput
+              value={formValues.businessHours}
+              onChangeText={(value) => onUpdateField('businessHours', value)}
+              placeholder="营业时间（选填），例如 10:00 - 20:00"
+              style={styles.input}
+            />
+            <TextInput
+              value={formValues.contact}
+              onChangeText={(value) => onUpdateField('contact', value)}
+              placeholder="联系方式（选填），例如 电话 / 微信"
+              style={styles.input}
             />
             <View style={styles.optionSection}>
               <Text style={styles.optionLabel}>标签</Text>
