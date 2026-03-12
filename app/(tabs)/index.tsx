@@ -23,12 +23,25 @@ import { SpotDetailSheet } from '@/components/map/SpotDetailSheet';
 import { SpotFormModal } from '@/components/map/SpotFormModal';
 import { theme } from '@/constants/theme';
 import { usePetMapStore } from '@/store/petmap-store';
+import type { SpotType } from '@/types/spot';
 
 const INITIAL_REGION: Region = {
   latitude: 31.2215,
   longitude: 121.4389,
   latitudeDelta: 0.08,
   longitudeDelta: 0.08,
+};
+
+const SPOT_TYPE_MARKER_COLORS: Record<
+  SpotType,
+  { solid: string; soft: string }
+> = {
+  park: { solid: '#2F9E44', soft: '#E7F6EB' },
+  cafe: { solid: '#B96A2F', soft: '#FDF0E6' },
+  hospital: { solid: '#D6333D', soft: '#FDEBEC' },
+  store: { solid: '#7C4DFF', soft: '#F1EBFF' },
+  indoor: { solid: '#1D6FD8', soft: '#EAF2FF' },
+  other: { solid: '#6B7280', soft: '#F3F4F6' },
 };
 
 export default function TabOneScreen() {
@@ -660,6 +673,7 @@ export default function TabOneScreen() {
         showsUserLocation>
         {spots.map((spot) => {
           const isSelected = selectedSpot?.id === spot.id;
+          const markerColors = SPOT_TYPE_MARKER_COLORS[spot.spotType];
 
           return (
             <Marker
@@ -672,11 +686,16 @@ export default function TabOneScreen() {
                   style={[
                     styles.markerPin,
                     isSelected ? styles.markerPinSelected : styles.markerPinDefault,
+                    {
+                      borderColor: markerColors.solid,
+                      backgroundColor: isSelected ? markerColors.soft : '#FFFFFF',
+                    },
                   ]}>
                   <View
                     style={[
                       styles.markerCenter,
                       isSelected ? styles.markerCenterSelected : styles.markerCenterDefault,
+                      { backgroundColor: markerColors.solid },
                     ]}
                   />
                 </View>
@@ -684,6 +703,7 @@ export default function TabOneScreen() {
                   style={[
                     styles.markerStem,
                     isSelected ? styles.markerStemSelected : styles.markerStemDefault,
+                    { backgroundColor: markerColors.solid },
                   ]}
                 />
               </View>
@@ -819,13 +839,16 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     backgroundColor: '#FFFFFF',
-    borderColor: theme.colors.textPrimary,
   },
   markerPinSelected: {
     width: 28,
     height: 28,
-    backgroundColor: theme.colors.primarySoft,
-    borderColor: theme.colors.primary,
+    borderWidth: 3,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.24,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 5,
   },
   markerCenter: {
     borderRadius: theme.radii.pill,
@@ -833,12 +856,10 @@ const styles = StyleSheet.create({
   markerCenterDefault: {
     width: 8,
     height: 8,
-    backgroundColor: theme.colors.textPrimary,
   },
   markerCenterSelected: {
     width: 12,
     height: 12,
-    backgroundColor: theme.colors.primary,
   },
   markerStem: {
     width: 3,
@@ -847,11 +868,9 @@ const styles = StyleSheet.create({
   },
   markerStemDefault: {
     height: 10,
-    backgroundColor: theme.colors.textPrimary,
   },
   markerStemSelected: {
     height: 12,
-    backgroundColor: theme.colors.primary,
   },
   eyebrow: {
     fontSize: 12,
