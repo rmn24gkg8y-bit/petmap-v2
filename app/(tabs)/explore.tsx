@@ -38,7 +38,7 @@ export default function ExploreScreen() {
     filteredSpots,
     allTags,
     searchQuery,
-    selectedTag,
+    selectedTags,
     selectedSpotType,
     showFavoritesOnly,
     showUserOnly,
@@ -46,7 +46,8 @@ export default function ExploreScreen() {
     userLoc,
     setSelectedSpot,
     setSearchQuery,
-    setSelectedTag,
+    toggleSelectedTag,
+    clearSelectedTags,
     setSelectedSpotType,
     setShowFavoritesOnly,
     setShowUserOnly,
@@ -70,9 +71,10 @@ export default function ExploreScreen() {
     [filteredSpots]
   );
   const selectedSpotTypeLabel = selectedSpotType ? SPOT_TYPE_LABELS[selectedSpotType] : '全部类型';
+  const selectedTagsLabel = selectedTags.length === 0 ? '全部标签' : selectedTags.join(' + ');
   const hasActiveFilters =
     searchQuery.trim().length > 0 ||
-    selectedTag !== null ||
+    selectedTags.length > 0 ||
     selectedSpotType !== null ||
     showFavoritesOnly ||
     showUserOnly ||
@@ -194,7 +196,7 @@ export default function ExploreScreen() {
 
                 <View style={styles.stickyFooter}>
                   <Text style={styles.resultSummary}>
-                    {SORT_MODE_LABELS[sortMode]} · {selectedSpotTypeLabel} · {selectedTag ?? '全部标签'} · {filteredSpots.length} 个结果
+                    {SORT_MODE_LABELS[sortMode]} · {selectedSpotTypeLabel} · {selectedTagsLabel} · {filteredSpots.length} 个结果
                   </Text>
                   <View style={styles.stickyFooterActions}>
                     {hasActiveFilters ? (
@@ -226,15 +228,15 @@ export default function ExploreScreen() {
                       showsHorizontalScrollIndicator={false}
                       contentContainerStyle={styles.tagContent}>
                       <Pressable
-                        onPress={() => setSelectedTag(null)}>
-                        <TagChip label="全部" active={selectedTag === null} />
+                        onPress={clearSelectedTags}>
+                        <TagChip label="全部" active={selectedTags.length === 0} />
                       </Pressable>
 
                       {allTags.map((tag) => (
                         <Pressable
                           key={tag}
-                          onPress={() => setSelectedTag(tag)}>
-                          <TagChip label={tag} active={selectedTag === tag} />
+                          onPress={() => toggleSelectedTag(tag)}>
+                          <TagChip label={tag} active={selectedTags.includes(tag)} />
                         </Pressable>
                       ))}
                     </ScrollView>
