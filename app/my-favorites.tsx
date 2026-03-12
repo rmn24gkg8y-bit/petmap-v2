@@ -1,5 +1,5 @@
 import { router, Stack } from 'expo-router';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { usePetMapStore } from '@/store/petmap-store';
 
@@ -37,33 +37,35 @@ export default function MyFavoritesScreen() {
         }
         renderItem={({ item }) => (
           <Pressable onPress={() => handleSelectSpot(item.id)} style={styles.card}>
-            <Text style={styles.name}>{item.name}</Text>
-            <View style={styles.badgeRow}>
-              <Text
-                style={[
-                  styles.sourceBadge,
-                  item.source === 'user' ? styles.userSourceBadge : styles.systemSourceBadge,
-                ]}>
-                {item.source === 'user' ? '我添加的' : '系统收录'}
-              </Text>
-              {item.source === 'user' ? (
-                <Text
-                  style={[
-                    styles.statusBadge,
-                    item.submissionStatus === 'pending_review'
-                      ? styles.pendingBadge
-                      : styles.localBadge,
-                  ]}>
-                  {item.submissionStatus === 'pending_review' ? '待审核' : '仅本机保存'}
-                </Text>
-              ) : null}
+            <View style={styles.cardTopRow}>
+              {item.photoUris?.[0] ? (
+                <Image source={{ uri: item.photoUris[0] }} style={styles.thumbnail} />
+              ) : (
+                <View style={styles.thumbnailPlaceholder}>
+                  <Text style={styles.thumbnailPlaceholderText}>暂无图片</Text>
+                </View>
+              )}
+              <View style={styles.cardTopMeta}>
+                <Text style={styles.name}>{item.name}</Text>
+                <View style={styles.badgeRow}>
+                  <Text
+                    style={[
+                      styles.sourceBadge,
+                      item.source === 'user' ? styles.userSourceBadge : styles.systemSourceBadge,
+                    ]}>
+                    {item.source === 'user' ? '我添加的' : '系统收录'}
+                  </Text>
+                </View>
+              </View>
             </View>
             <Text style={styles.meta}>
-              {item.district} · {item.addressHint}
+              {item.formattedAddress?.trim() ||
+                [item.district, item.addressHint].map((value) => value.trim()).filter(Boolean).join(' · ') ||
+                '地址待补充'}
             </Text>
             {item.tags.length > 0 ? (
               <View style={styles.tagRow}>
-                {item.tags.map((tag) => (
+                {item.tags.slice(0, 3).map((tag) => (
                   <Text key={`${item.id}-${tag}`} style={styles.tagChip}>
                     {tag}
                   </Text>
@@ -146,6 +148,35 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     padding: 18,
   },
+  cardTopRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  cardTopMeta: {
+    flex: 1,
+  },
+  thumbnail: {
+    width: 72,
+    height: 72,
+    borderRadius: 14,
+    backgroundColor: '#E5E7EB',
+  },
+  thumbnailPlaceholder: {
+    width: 72,
+    height: 72,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  thumbnailPlaceholderText: {
+    fontSize: 11,
+    color: '#6B7280',
+    textAlign: 'center',
+  },
   name: {
     fontSize: 20,
     fontWeight: '800',
@@ -171,21 +202,6 @@ const styles = StyleSheet.create({
   userSourceBadge: {
     backgroundColor: '#DBEAFE',
     color: '#1D4ED8',
-  },
-  statusBadge: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  pendingBadge: {
-    backgroundColor: '#FEF3C7',
-    color: '#B45309',
-  },
-  localBadge: {
-    backgroundColor: '#DCFCE7',
-    color: '#15803D',
   },
   meta: {
     marginTop: 12,
