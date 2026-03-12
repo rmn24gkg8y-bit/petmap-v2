@@ -1,5 +1,5 @@
 import { router, Stack } from 'expo-router';
-import { FlatList, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, StyleSheet, View } from 'react-native';
 
 import { EmptyStateCard, PrimaryButton, SectionHeader, SpotCard, StatusBadge } from '@/components/ui';
 import { theme } from '@/constants/theme';
@@ -11,6 +11,17 @@ export default function MySpotsScreen() {
   function handleSelectSpot(id: string) {
     setSelectedSpot(id);
     router.navigate('/(tabs)');
+  }
+
+  async function handleSubmitForReview(id: string) {
+    const result = await submitSpotForReview(id);
+
+    if (result.success) {
+      Alert.alert('提交成功', '该地点已进入待审核状态');
+      return;
+    }
+
+    Alert.alert('提交失败', result.error ?? '云端提交失败，请稍后重试。');
   }
 
   return (
@@ -64,7 +75,7 @@ export default function MySpotsScreen() {
                 item.submissionStatus !== 'pending_review' ? (
                   <PrimaryButton
                     label="提交审核"
-                    onPress={() => submitSpotForReview(item.id)}
+                    onPress={() => handleSubmitForReview(item.id)}
                     style={styles.submitButton}
                   />
                 ) : null
