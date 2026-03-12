@@ -24,18 +24,30 @@ function getSpotGroupKey(spot: Spot): SpotGroupKey {
 
 function getSpotStatusMeta(spot: Spot) {
   if (spot.submissionStatus === 'pending_review') {
-    return { label: '审核中', variant: 'pending' as const };
+    return {
+      label: '审核中',
+      variant: 'pending' as const,
+      hint: '地点正在审核中，可先查看或继续完善信息。',
+    };
   }
 
   if (spot.verified) {
-    return { label: '已发布', variant: 'favorite' as const };
+    return {
+      label: '已发布',
+      variant: 'favorite' as const,
+      hint: '地点已上线，可继续维护信息。',
+    };
   }
 
-  return { label: '待提交', variant: 'local' as const };
+  return {
+    label: '待提交',
+    variant: 'local' as const,
+    hint: '完善后可提交审核。',
+  };
 }
 
 export default function MySpotsScreen() {
-  const { userSpots, setSelectedSpot, submitSpotForReview } = usePetMapStore();
+  const { userSpots, setSelectedSpot, submitSpotForReview, removeSpot } = usePetMapStore();
   const groupedSpots = useMemo(() => {
     const pending = userSpots.filter((spot) => getSpotGroupKey(spot) === 'pending');
     const published = userSpots.filter((spot) => getSpotGroupKey(spot) === 'published');
@@ -51,6 +63,25 @@ export default function MySpotsScreen() {
   function handleSelectSpot(id: string) {
     setSelectedSpot(id);
     router.navigate('/(tabs)');
+  }
+
+  function handleEditSpot(id: string) {
+    setSelectedSpot(id);
+    router.navigate('/(tabs)');
+  }
+
+  function handleDeleteSpot(id: string) {
+    Alert.alert('确认删除地点？', '删除后将无法恢复', [
+      {
+        text: '取消',
+        style: 'cancel',
+      },
+      {
+        text: '删除',
+        style: 'destructive',
+        onPress: () => removeSpot(id),
+      },
+    ]);
   }
 
   async function handleSubmitForReview(id: string) {
@@ -97,6 +128,7 @@ export default function MySpotsScreen() {
               </View>
               {group.spots.map((item) => {
                 const statusMeta = getSpotStatusMeta(item);
+                const groupKey = getSpotGroupKey(item);
 
                 return (
                   <SpotCard
@@ -120,13 +152,62 @@ export default function MySpotsScreen() {
                     tags={item.tags.slice(0, 3)}
                     onPressTop={() => handleSelectSpot(item.id)}
                     footer={
-                      item.submissionStatus !== 'pending_review' && !item.verified ? (
-                        <PrimaryButton
-                          label="提交审核"
-                          onPress={() => handleSubmitForReview(item.id)}
-                          style={styles.submitButton}
-                        />
-                      ) : null
+                      <View style={styles.cardFooter}>
+                        <Text style={styles.statusHintText}>{statusMeta.hint}</Text>
+                        <View style={styles.actionsRow}>
+                          {groupKey === 'other' ? (
+                            <>
+                              <PrimaryButton
+                                label="提交审核"
+                                onPress={() => handleSubmitForReview(item.id)}
+                                style={styles.actionButton}
+                              />
+                              <PrimaryButton
+                                label="去地图编辑"
+                                variant="secondary"
+                                onPress={() => handleEditSpot(item.id)}
+                                style={styles.actionButton}
+                              />
+                            </>
+                          ) : null}
+                          {groupKey === 'pending' ? (
+                            <>
+                              <PrimaryButton
+                                label="查看地点"
+                                onPress={() => handleSelectSpot(item.id)}
+                                style={styles.actionButton}
+                              />
+                              <PrimaryButton
+                                label="去地图编辑"
+                                variant="secondary"
+                                onPress={() => handleEditSpot(item.id)}
+                                style={styles.actionButton}
+                              />
+                            </>
+                          ) : null}
+                          {groupKey === 'published' ? (
+                            <>
+                              <PrimaryButton
+                                label="查看地点"
+                                onPress={() => handleSelectSpot(item.id)}
+                                style={styles.actionButton}
+                              />
+                              <PrimaryButton
+                                label="去地图编辑"
+                                variant="secondary"
+                                onPress={() => handleEditSpot(item.id)}
+                                style={styles.actionButton}
+                              />
+                              <PrimaryButton
+                                label="删除地点"
+                                variant="danger"
+                                onPress={() => handleDeleteSpot(item.id)}
+                                style={styles.actionButton}
+                              />
+                            </>
+                          ) : null}
+                        </View>
+                      </View>
                     }
                   />
                 );
@@ -174,7 +255,21 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
     fontWeight: '600',
   },
-  submitButton: {
-    marginTop: theme.spacing.md,
+  cardFooter: {
+    marginTop: theme.spacing.sm + 2,
+    gap: theme.spacing.sm,
+  },
+  statusHintText: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: theme.colors.textSecondary,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
+  },
+  actionButton: {
+    paddingVertical: 10,
   },
 });
