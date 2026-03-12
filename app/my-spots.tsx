@@ -1,5 +1,5 @@
 import { router, Stack } from 'expo-router';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { usePetMapStore } from '@/store/petmap-store';
 
@@ -38,29 +38,44 @@ export default function MySpotsScreen() {
         renderItem={({ item }) => (
           <View style={styles.card}>
             <Pressable onPress={() => handleSelectSpot(item.id)}>
-              <Text style={styles.name}>{item.name}</Text>
-              <View style={styles.badgeRow}>
-                <Text style={styles.sourceBadge}>我添加的</Text>
-                <Text
-                  style={[
-                    styles.statusBadge,
-                    item.submissionStatus === 'pending_review'
-                      ? styles.pendingBadge
-                      : styles.localBadge,
-                  ]}>
-                  {item.submissionStatus === 'pending_review' ? '待审核' : '仅本机保存'}
-                </Text>
+              <View style={styles.cardTopRow}>
+                {item.photoUris?.[0] ? (
+                  <Image source={{ uri: item.photoUris[0] }} style={styles.thumbnail} />
+                ) : (
+                  <View style={styles.thumbnailPlaceholder}>
+                    <Text style={styles.thumbnailPlaceholderText}>暂无图片</Text>
+                  </View>
+                )}
+                <View style={styles.cardTopMeta}>
+                  <Text style={styles.name}>{item.name}</Text>
+                  <View style={styles.badgeRow}>
+                    <Text style={styles.sourceBadge}>我添加的</Text>
+                    <Text
+                      style={[
+                        styles.statusBadge,
+                        item.submissionStatus === 'pending_review'
+                          ? styles.pendingBadge
+                          : styles.localBadge,
+                      ]}>
+                      {item.submissionStatus === 'pending_review' ? '待审核' : '仅本机保存'}
+                    </Text>
+                  </View>
+                </View>
               </View>
               <Text style={styles.meta}>
-                {item.district} · {item.addressHint}
+                {item.formattedAddress?.trim() ||
+                  [item.district, item.addressHint].map((value) => value.trim()).filter(Boolean).join(' · ') ||
+                  '地址待补充'}
               </Text>
-              <View style={styles.tagRow}>
-                {item.tags.map((tag) => (
-                  <Text key={`${item.id}-${tag}`} style={styles.tagChip}>
-                    {tag}
-                  </Text>
-                ))}
-              </View>
+              {item.tags.length > 0 ? (
+                <View style={styles.tagRow}>
+                  {item.tags.slice(0, 3).map((tag) => (
+                    <Text key={`${item.id}-${tag}`} style={styles.tagChip}>
+                      {tag}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
             </Pressable>
 
             {item.submissionStatus !== 'pending_review' ? (
@@ -144,6 +159,35 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: '#FFFFFF',
     padding: 18,
+  },
+  cardTopRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  cardTopMeta: {
+    flex: 1,
+  },
+  thumbnail: {
+    width: 72,
+    height: 72,
+    borderRadius: 14,
+    backgroundColor: '#E5E7EB',
+  },
+  thumbnailPlaceholder: {
+    width: 72,
+    height: 72,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  thumbnailPlaceholderText: {
+    fontSize: 11,
+    color: '#6B7280',
+    textAlign: 'center',
   },
   name: {
     fontSize: 20,
