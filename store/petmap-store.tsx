@@ -7,7 +7,11 @@ import {
   useState,
 } from 'react';
 
-import { mockSpots } from '@/repo/spotsRepo';
+import {
+  fetchSystemSpotsFromCloud,
+  getFallbackSystemSpots,
+} from '@/repo/cloudSpotsRepo';
+import { submitSpotForReviewToCloud } from '@/repo/cloudSubmissionRepo';
 import {
   loadFormattedAddressBySpotId,
   loadFavoriteIds,
@@ -26,6 +30,7 @@ type UserLoc = { lat: number; lng: number } | null;
 
 type PetMapStoreValue = {
   hasHydratedStorage: boolean;
+  hasLoadedRemoteSpots: boolean;
   spots: Spot[];
   selectedSpotId: string | null;
   favoriteIds: string[];
@@ -51,7 +56,7 @@ type PetMapStoreValue = {
   addSpotPhoto: (spotId: string, uri: string) => void;
   removeSpotPhoto: (spotId: string, uri: string) => void;
   setSpotFormattedAddress: (id: string, formattedAddress: string) => void;
-  submitSpotForReview: (id: string) => void;
+  submitSpotForReview: (id: string) => Promise<{ success: boolean; error?: string }>;
   setSelectedSpot: (id: string) => void;
   clearSelectedSpot: () => void;
   toggleFavorite: (id: string) => void;
@@ -70,6 +75,9 @@ type PetMapStoreValue = {
 const PetMapContext = createContext<PetMapStoreValue | undefined>(undefined);
 
 export function PetMapProvider({ children }: PropsWithChildren) {
+  const fallbackSystemSpots = getFallbackSystemSpots();
+  const [systemSpots, setSystemSpots] = useState<Spot[]>(fallbackSystemSpots);
+  const [hasLoadedRemoteSpots, setHasLoadedRemoteSpots] = useState(false);
   const [userCreatedSpots, setUserCreatedSpots] = useState<Spot[]>([]);
   const [formattedAddressBySpotId, setFormattedAddressBySpotId] = useState<Record<string, string>>(
     {}
@@ -85,6 +93,40 @@ export function PetMapProvider({ children }: PropsWithChildren) {
   const [sortMode, setSortMode] = useState<SortMode>('popular');
   const [userLoc, setUserLoc] = useState<UserLoc>(null);
   const [hasHydratedStorage, setHasHydratedStorage] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function hydrateSystemSpots() {
+      try {
+        const remoteSpots = await fetchSystemSpotsFromCloud();
+
+        if (!isMounted) {
+          return;
+        }
+
+        setSystemSpots(remoteSpots);
+        console.log('[PetMapStore][cloud] loaded system spots:', remoteSpots.length);
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+
+        setSystemSpots(fallbackSystemSpots);
+        console.warn('[PetMapStore][cloud] failed, fallback to mock spots:', error);
+      } finally {
+        if (isMounted) {
+          setHasLoadedRemoteSpots(true);
+        }
+      }
+    }
+
+    hydrateSystemSpots();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [fallbackSystemSpots]);
 
   useEffect(() => {
     let isMounted = true;
@@ -175,13 +217,13 @@ export function PetMapProvider({ children }: PropsWithChildren) {
   }, [formattedAddressBySpotId, hasHydratedStorage]);
 
   const value = useMemo(() => {
-    const systemSpotHitCount = mockSpots.filter(
+    const systemSpotHitCount = systemSpots.filter(
       (spot) => typeof formattedAddressBySpotId[spot.id] === 'string'
     ).length;
     console.log('[PetMapStore][compose] system spot cache hits:', systemSpotHitCount);
 
     const spots = [
-      ...mockSpots.map((spot) =>
+      ...systemSpots.map((spot) =>
         formattedAddressBySpotId[spot.id]
           ? { ...spot, formattedAddress: formattedAddressBySpotId[spot.id] }
           : spot
@@ -258,6 +300,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
 
     return {
       hasHydratedStorage,
+      hasLoadedRemoteSpots,
       spots,
       selectedSpotId,
       favoriteIds,
@@ -355,16 +398,38 @@ export function PetMapProvider({ children }: PropsWithChildren) {
           current.map((spot) => (spot.id === id ? { ...spot, formattedAddress: nextValue } : spot))
         );
       },
-      submitSpotForReview: (id: string) => {
-        setUserCreatedSpots((current) =>
-          current.map((spot) =>
-            spot.id === id &&
-            spot.source === 'user' &&
-            (spot.submissionStatus === undefined || spot.submissionStatus === 'local')
-              ? { ...spot, submissionStatus: 'pending_review' }
-              : spot
-          )
-        );
+      submitSpotForReview: async (id: string) => {
+        const targetSpot = userCreatedSpots.find((spot) => spot.id === id);
+
+        if (
+          !targetSpot ||
+          targetSpot.source !== 'user' ||
+          targetSpot.submissionStatus === 'pending_review'
+        ) {
+          return { success: false, error: '该地点当前无法提交审核' };
+        }
+
+        try {
+          await submitSpotForReviewToCloud(targetSpot);
+          setUserCreatedSpots((current) =>
+            current.map((spot) =>
+              spot.id === id &&
+              spot.source === 'user' &&
+              (spot.submissionStatus === undefined || spot.submissionStatus === 'local')
+                ? { ...spot, submissionStatus: 'pending_review' }
+                : spot
+            )
+          );
+
+          return { success: true };
+        } catch (error) {
+          console.warn('[PetMapStore][submitSpotForReview] failed:', error);
+
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : '提交失败，请稍后重试',
+          };
+        }
       },
       setSelectedSpot: (id: string) => {
         setSelectedSpotId(id);
@@ -395,6 +460,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
     };
   }, [
     hasHydratedStorage,
+    hasLoadedRemoteSpots,
     favoriteIds,
     recentViewedIds,
     searchQuery,
@@ -405,6 +471,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
     showUserOnly,
     sortMode,
     formattedAddressBySpotId,
+    systemSpots,
     userLoc,
     userCreatedSpots,
   ]);

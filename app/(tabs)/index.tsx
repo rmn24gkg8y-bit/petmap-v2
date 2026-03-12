@@ -528,7 +528,7 @@ export default function TabOneScreen() {
     ]);
   }
 
-  function handleSubmitForReview() {
+  async function handleSubmitForReview() {
     if (
       !selectedSpot ||
       selectedSpot.source !== 'user' ||
@@ -537,8 +537,14 @@ export default function TabOneScreen() {
       return;
     }
 
-    submitSpotForReview(selectedSpot.id);
-    Alert.alert('提交成功', '该地点已进入待审核状态');
+    const result = await submitSpotForReview(selectedSpot.id);
+
+    if (result.success) {
+      Alert.alert('提交成功', '该地点已进入待审核状态');
+      return;
+    }
+
+    Alert.alert('提交失败', result.error ?? '云端提交失败，请稍后重试。');
   }
 
   async function handlePickSpotPhoto() {
