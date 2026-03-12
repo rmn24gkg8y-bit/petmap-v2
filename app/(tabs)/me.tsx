@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { SectionHeader } from '@/components/ui';
 import { theme } from '@/constants/theme';
@@ -19,26 +19,22 @@ export default function MeScreen() {
     {
       key: 'badges',
       label: '我的勋章',
-      onPress: () => Alert.alert('即将上线', '我的勋章功能即将上线。'),
-      isPlaceholder: true,
+      onPress: () => router.push('/badges'),
     },
     {
       key: 'settings',
       label: '设置',
-      onPress: () => Alert.alert('即将上线', '设置功能即将上线。'),
-      isPlaceholder: true,
+      onPress: () => router.push('/settings'),
     },
     {
       key: 'feedback',
       label: '意见反馈',
-      onPress: () => Alert.alert('即将上线', '意见反馈功能即将上线。'),
-      isPlaceholder: true,
+      onPress: () => router.push('/feedback'),
     },
     {
       key: 'about',
       label: '关于 PetMap',
-      onPress: () => Alert.alert('即将上线', '关于页面即将上线。'),
-      isPlaceholder: true,
+      onPress: () => router.push('/about'),
     },
   ];
 

@@ -53,6 +53,24 @@ export default function TabLayout() {
           headerTitle: 'Explore',
         }}
       />
+      <Tabs.Screen
+        name="me"
+        options={{
+          title: 'Me',
+          tabBarIcon: ({ color }) => (
+            <SymbolView
+              name={{
+                ios: 'person.crop.circle',
+                android: 'person',
+                web: 'person',
+              }}
+              tintColor={color}
+              size={28}
+            />
+          ),
+          headerTitle: 'Me',
+        }}
+      />
     </Tabs>
   );
 }
