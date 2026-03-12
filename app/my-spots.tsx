@@ -17,11 +17,15 @@ export default function MySpotsScreen() {
     const result = await submitSpotForReview(id);
 
     if (result.success) {
-      Alert.alert('提交成功', '该地点已进入待审核状态');
+      if (result.mode === 'cloud') {
+        Alert.alert('提交成功', '该地点已提交到云端审核队列');
+      } else {
+        Alert.alert('已标记待审核', '当前未接入云端，已先在本地标记为待审核');
+      }
       return;
     }
 
-    Alert.alert('提交失败', result.error ?? '云端提交失败，请稍后重试。');
+    Alert.alert('提交失败', result.error ?? '提交失败，请稍后重试');
   }
 
   return (
