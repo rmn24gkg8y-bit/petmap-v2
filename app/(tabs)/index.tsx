@@ -58,10 +58,12 @@ export default function TabOneScreen() {
   const [sheetVisibleHeight, setSheetVisibleHeight] = useState(136 + insets.bottom);
   const [formValues, setFormValues] = useState({
     name: '',
-    spotType: '' as '' | 'park' | 'cafe' | 'hospital' | 'store' | 'indoor' | 'other',
     district: '',
     addressHint: '',
     description: '',
+    petFriendlyLevel: '' as '' | 'high' | 'medium' | 'low',
+    businessHours: '',
+    contact: '',
     tags: [] as string[],
   });
   const {
@@ -371,10 +373,12 @@ export default function TabOneScreen() {
     });
     setFormValues({
       name: '',
-      spotType: '',
       district: '',
       addressHint: '',
       description: '',
+      petFriendlyLevel: '',
+      businessHours: '',
+      contact: '',
       tags: [],
     });
     setPendingFormattedAddress('');
@@ -417,11 +421,13 @@ export default function TabOneScreen() {
     }
 
     const name = formValues.name.trim();
-    const spotType = formValues.spotType;
     const district = formValues.district.trim();
     const addressHint = formValues.addressHint.trim();
     const formattedAddress = pendingFormattedAddress.trim();
     const description = formValues.description.trim();
+    const petFriendlyLevel = formValues.petFriendlyLevel || undefined;
+    const businessHours = formValues.businessHours.trim() || undefined;
+    const contact = formValues.contact.trim() || undefined;
     const tags = formValues.tags;
 
     if (!name) {
@@ -434,11 +440,6 @@ export default function TabOneScreen() {
       return;
     }
 
-    if (!spotType) {
-      setFormError('请先选择地点类型');
-      return;
-    }
-
     if (modalMode === 'edit') {
       if (!editingSpotId || !selectedSpot || selectedSpot.source !== 'user') {
         return;
@@ -448,13 +449,15 @@ export default function TabOneScreen() {
         ...selectedSpot,
         id: editingSpotId,
         name,
-        spotType,
         district,
         addressHint,
         lat: pendingCoords.lat,
         lng: pendingCoords.lng,
         tags,
         description,
+        petFriendlyLevel,
+        businessHours,
+        contact,
       };
 
       updateSpot(updatedSpot);
@@ -466,7 +469,7 @@ export default function TabOneScreen() {
         name,
         source: 'user' as const,
         submissionStatus: 'local' as const,
-        spotType,
+        spotType: 'other' as const,
         district,
         addressHint,
         formattedAddress: formattedAddress || undefined,
@@ -475,6 +478,9 @@ export default function TabOneScreen() {
         tags,
         description,
         votes: 0,
+        petFriendlyLevel,
+        businessHours,
+        contact,
       };
 
       addSpot(newSpot);
@@ -498,10 +504,12 @@ export default function TabOneScreen() {
     });
     setFormValues({
       name: selectedSpot.name,
-      spotType: selectedSpot.spotType,
       district: selectedSpot.district,
       addressHint: selectedSpot.addressHint,
       description: selectedSpot.description,
+      petFriendlyLevel: selectedSpot.petFriendlyLevel ?? '',
+      businessHours: selectedSpot.businessHours ?? '',
+      contact: selectedSpot.contact ?? '',
       tags: selectedSpot.tags,
     });
     setPendingFormattedAddress(selectedSpot.formattedAddress ?? '');
