@@ -21,6 +21,8 @@ export default function MySpotsScreen() {
         data={userSpots}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        ListHeaderComponentStyle={styles.listHeader}
         ListHeaderComponent={
           <SectionHeader
             eyebrow="内容管理"
@@ -29,11 +31,13 @@ export default function MySpotsScreen() {
           />
         }
         ListEmptyComponent={
-          <EmptyStateCard
-            title="你还没有添加任何地点"
-            description="可以去地图页长按添加一个地点"
-            action={<PrimaryButton label="前往地图添加" onPress={() => router.navigate('/(tabs)')} />}
-          />
+          <View style={styles.listEmpty}>
+            <EmptyStateCard
+              title="你还没有添加任何地点"
+              description="可以去地图页长按添加一个地点"
+              action={<PrimaryButton label="前往地图添加" onPress={() => router.navigate('/(tabs)')} />}
+            />
+          </View>
         }
         renderItem={({ item }) => (
           <View>
@@ -82,6 +86,12 @@ const styles = StyleSheet.create({
     padding: theme.spacing.lg,
     paddingBottom: theme.spacing.xl + theme.spacing.sm,
     flexGrow: 1,
+  },
+  listHeader: {
+    marginBottom: theme.spacing.xs,
+  },
+  listEmpty: {
+    marginTop: theme.spacing.sm,
   },
   submitButton: {
     marginTop: theme.spacing.md,

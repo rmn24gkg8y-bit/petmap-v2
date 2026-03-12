@@ -21,6 +21,8 @@ export default function MyFavoritesScreen() {
         data={favoriteSpots}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        ListHeaderComponentStyle={styles.listHeader}
         ListHeaderComponent={
           <SectionHeader
             eyebrow="收藏管理"
@@ -29,13 +31,15 @@ export default function MyFavoritesScreen() {
           />
         }
         ListEmptyComponent={
-          <EmptyStateCard
-            title="你还没有收藏任何地点"
-            description="可以去 Explore 或地图页挑选并收藏地点"
-            action={
-              <PrimaryButton label="前往 Explore" onPress={() => router.navigate('/(tabs)/explore')} />
-            }
-          />
+          <View style={styles.listEmpty}>
+            <EmptyStateCard
+              title="你还没有收藏任何地点"
+              description="可以去 Explore 或地图页挑选并收藏地点"
+              action={
+                <PrimaryButton label="前往 Explore" onPress={() => router.navigate('/(tabs)/explore')} />
+              }
+            />
+          </View>
         }
         renderItem={({ item }) => (
           <SpotCard
@@ -71,5 +75,11 @@ const styles = StyleSheet.create({
     padding: theme.spacing.lg,
     paddingBottom: theme.spacing.xl + theme.spacing.sm,
     flexGrow: 1,
+  },
+  listHeader: {
+    marginBottom: theme.spacing.xs,
+  },
+  listEmpty: {
+    marginTop: theme.spacing.sm,
   },
 });

@@ -1071,14 +1071,12 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: theme.radii.pill,
-    backgroundColor: 'rgba(255, 255, 255, 0.96)',
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.16,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 6,
+    ...theme.shadows.floating,
   },
   quickActionBadge: {
     position: 'absolute',
@@ -1175,8 +1173,11 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: theme.radii.md,
     backgroundColor: 'rgba(255, 255, 255, 0.94)',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     paddingHorizontal: 16,
     paddingVertical: 14,
+    ...theme.shadows.card,
   },
   statValue: {
     fontSize: 26,
@@ -1192,7 +1193,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 12,
     fontWeight: '700',
-    color: theme.colors.primary,
+    color: theme.colors.accent,
   },
   sheet: {
     position: 'absolute',
@@ -1202,11 +1203,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     backgroundColor: theme.colors.cardBackground,
-    shadowColor: '#111827',
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: -6 },
-    elevation: 12,
+    ...theme.shadows.floating,
   },
   sheetHandleArea: {
     alignItems: 'center',
@@ -1235,8 +1232,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.cardBackground,
-    paddingTop: 8,
-    paddingBottom: 8,
+    paddingTop: theme.spacing.sm,
+    paddingBottom: theme.spacing.sm,
     paddingHorizontal: theme.spacing.md,
     ...theme.shadows.card,
   },
@@ -1256,8 +1253,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.cardBackground,
-    paddingTop: 8,
-    paddingBottom: 8,
+    paddingTop: theme.spacing.sm,
+    paddingBottom: theme.spacing.sm,
     paddingHorizontal: theme.spacing.md,
     ...theme.shadows.card,
   },
@@ -1317,11 +1314,16 @@ const styles = StyleSheet.create({
   spotMetaText: {
     fontSize: 14,
     lineHeight: 20,
-    color: theme.colors.textSecondary,
+    color: theme.colors.textPrimary,
   },
   addressBlock: {
     marginTop: 12,
     gap: 6,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceMuted,
+    padding: theme.spacing.sm,
   },
   addressLabel: {
     fontSize: 12,
@@ -1345,6 +1347,9 @@ const styles = StyleSheet.create({
   },
   photoSection: {
     marginTop: 18,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.divider,
+    paddingTop: theme.spacing.md,
   },
   photoSectionHeader: {
     flexDirection: 'row',
@@ -1374,7 +1379,7 @@ const styles = StyleSheet.create({
   },
   photoSectionHint: {
     fontSize: 12,
-    color: theme.colors.textSecondary,
+    color: theme.colors.textTertiary,
   },
   photoRow: {
     gap: 12,
@@ -1439,7 +1444,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     textAlign: 'center',
-    color: theme.colors.textSecondary,
+    color: theme.colors.textTertiary,
   },
   cardDescription: {
     marginTop: 12,
@@ -1454,7 +1459,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
+    borderTopColor: theme.colors.divider,
   },
   detailMetaLabel: {
     fontSize: 13,
@@ -1476,7 +1481,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     borderRadius: theme.radii.pill,
-    backgroundColor: theme.colors.chipBackground,
+    backgroundColor: theme.colors.surfaceMuted,
     borderWidth: 1,
     borderColor: theme.colors.border,
     paddingHorizontal: 12,
@@ -1522,7 +1527,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     marginTop: theme.spacing.md,
     borderRadius: theme.radii.md,
-    backgroundColor: theme.colors.chipBackground,
+    backgroundColor: theme.colors.surfaceMuted,
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
@@ -1547,7 +1552,7 @@ const styles = StyleSheet.create({
   modalBackdrop: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(17, 24, 39, 0.4)',
+    backgroundColor: 'rgba(11, 19, 36, 0.35)',
   },
   modalCard: {
     maxHeight: '78%',
@@ -1556,7 +1561,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.cardBackground,
     paddingHorizontal: theme.spacing.lg,
     paddingTop: theme.spacing.lg,
-    paddingBottom: 32,
+    paddingBottom: theme.spacing.xl + theme.spacing.xs,
   },
   modalTitle: {
     fontSize: 22,
@@ -1573,7 +1578,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 13,
     lineHeight: 18,
-    color: theme.colors.textSecondary,
+    color: theme.colors.textTertiary,
   },
   modalForm: {
     marginTop: theme.spacing.md,
@@ -1601,12 +1606,12 @@ const styles = StyleSheet.create({
   formattedAddressText: {
     fontSize: 14,
     lineHeight: 20,
-    color: theme.colors.textSecondary,
+    color: theme.colors.textPrimary,
   },
   formattedAddressHintText: {
     fontSize: 12,
     lineHeight: 18,
-    color: theme.colors.textSecondary,
+    color: theme.colors.textTertiary,
   },
   optionSection: {
     gap: 10,
@@ -1658,7 +1663,7 @@ const styles = StyleSheet.create({
   },
   coordsText: {
     fontSize: 13,
-    color: theme.colors.textSecondary,
+    color: theme.colors.textTertiary,
   },
   formErrorText: {
     fontSize: 13,

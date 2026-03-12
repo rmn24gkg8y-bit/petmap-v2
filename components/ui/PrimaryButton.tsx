@@ -21,11 +21,12 @@ export function PrimaryButton({
     <Pressable
       {...rest}
       disabled={disabled}
-      style={[
+      style={({ pressed }) => [
         styles.base,
         variant === 'primary' ? styles.primary : null,
         variant === 'secondary' ? styles.secondary : null,
         variant === 'danger' ? styles.danger : null,
+        pressed ? styles.pressed : null,
         disabled ? styles.disabled : null,
         style,
       ]}>
@@ -54,9 +55,16 @@ const styles = StyleSheet.create({
   },
   secondary: {
     backgroundColor: theme.colors.chipBackground,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   danger: {
     backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  pressed: {
+    opacity: 0.88,
   },
   disabled: {
     opacity: 0.5,

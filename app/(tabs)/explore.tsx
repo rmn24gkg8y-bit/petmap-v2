@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.sm,
   },
   sectionHeader: {
-    marginBottom: 0,
+    marginBottom: 2,
   },
   searchRow: {
     flexDirection: 'row',
@@ -327,12 +327,13 @@ const styles = StyleSheet.create({
     borderRadius: theme.radii.md,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    backgroundColor: theme.colors.cardBackground,
-    padding: theme.spacing.sm,
+    backgroundColor: '#FFFFFFF2',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs + 2,
     ...theme.shadows.card,
   },
   stickyControls: {
-    gap: theme.spacing.xs,
+    gap: 6,
   },
   stickyRow: {
     flexDirection: 'row',
@@ -347,7 +348,7 @@ const styles = StyleSheet.create({
     marginRight: 2,
   },
   stickyFooter: {
-    marginTop: theme.spacing.sm - 2,
+    marginTop: theme.spacing.xs,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -360,9 +361,11 @@ const styles = StyleSheet.create({
   },
   moreFilterButton: {
     borderRadius: theme.radii.pill,
-    backgroundColor: theme.colors.primarySoft,
+    backgroundColor: theme.colors.chipBackground,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 5,
   },
   moreFilterButtonText: {
     fontSize: 12,
@@ -388,7 +391,7 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
   },
   auxSection: {
-    marginBottom: 6,
+    marginBottom: theme.spacing.xs,
     gap: 6,
   },
   recentSection: {
@@ -404,7 +407,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 7,
   },
   recentItemText: {
     fontSize: 13,
@@ -415,10 +418,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: theme.spacing.md,
+    marginTop: theme.spacing.sm + 2,
     paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
+    borderTopColor: theme.colors.divider,
   },
   distance: {
     fontSize: 13,
