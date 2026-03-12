@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { useMemo, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { usePetMapStore } from '@/store/petmap-store';
@@ -10,12 +11,20 @@ const SORT_MODE_LABELS = {
   distance: '距离优先',
 } as const;
 
+type ExploreListItem =
+  | { type: 'sticky'; key: 'sticky' }
+  | { type: 'aux'; key: 'aux' }
+  | {
+      type: 'spot';
+      key: string;
+      spot: ReturnType<typeof usePetMapStore>['filteredSpots'][number];
+    };
+
 export default function ExploreScreen() {
   const {
     filteredSpots,
     allTags,
     searchQuery,
-    userSpots,
     selectedTag,
     showFavoritesOnly,
     showUserOnly,
@@ -31,6 +40,20 @@ export default function ExploreScreen() {
     isFavorite,
     recentViewedSpots,
   } = usePetMapStore();
+  const [isTagExpanded, setIsTagExpanded] = useState(false);
+
+  const listData = useMemo<ExploreListItem[]>(
+    () => [
+      { type: 'sticky', key: 'sticky' },
+      { type: 'aux', key: 'aux' },
+      ...filteredSpots.map((spot) => ({
+        type: 'spot' as const,
+        key: spot.id,
+        spot,
+      })),
+    ],
+    [filteredSpots]
+  );
 
   function handleSelectSpot(id: string) {
     setSelectedSpot(id);
@@ -40,22 +63,14 @@ export default function ExploreScreen() {
   return (
     <View style={styles.container}>
       <FlatList
-        data={filteredSpots}
-        keyExtractor={(item) => item.id}
+        data={listData}
+        keyExtractor={(item) => item.key}
+        stickyHeaderIndices={[1]}
         contentContainerStyle={styles.content}
         ListHeaderComponent={
           <View style={styles.header}>
             <Text style={styles.eyebrow}>发现地点</Text>
             <Text style={styles.title}>Explore</Text>
-            <Text style={styles.subtitle}>按关键词、标签和来源快速找到适合你和宠物的地点。</Text>
-
-            <Pressable onPress={() => router.push('/my-spots')} style={styles.mySpotsEntry}>
-              <View style={styles.mySpotsCopy}>
-                <Text style={styles.mySpotsTitle}>我的地点</Text>
-                <Text style={styles.mySpotsSubtitle}>我添加的地点（{userSpots.length}）</Text>
-              </View>
-              <Text style={styles.mySpotsArrow}>管理</Text>
-            </Pressable>
 
             <View style={styles.searchRow}>
               <TextInput
@@ -70,288 +85,284 @@ export default function ExploreScreen() {
                 </Pressable>
               ) : null}
             </View>
-
-            <View style={styles.controlSection}>
-              <Text style={styles.controlTitle}>地点来源</Text>
-              <View style={styles.sortRow}>
-                <Pressable
-                  onPress={() => setShowUserOnly(false)}
-                  style={[
-                    styles.sortChip,
-                    !showUserOnly ? styles.sortChipActive : styles.sortChipInactive,
-                  ]}>
-                  <Text
-                    style={[
-                      styles.sortChipText,
-                      !showUserOnly ? styles.sortChipTextActive : styles.sortChipTextInactive,
-                    ]}>
-                    全部来源
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={() => setShowUserOnly(true)}
-                  style={[
-                    styles.sortChip,
-                    showUserOnly ? styles.sortChipActive : styles.sortChipInactive,
-                  ]}>
-                  <Text
-                    style={[
-                      styles.sortChipText,
-                      showUserOnly ? styles.sortChipTextActive : styles.sortChipTextInactive,
-                    ]}>
-                    仅看我添加的
-                  </Text>
-                </Pressable>
-              </View>
+          </View>
+        }
+        ListFooterComponent={
+          filteredSpots.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyTitle}>暂时没有符合条件的地点</Text>
+              <Text style={styles.emptyDescription}>试试更换关键词、标签，或者直接清除筛选。</Text>
+              {showUserOnly ? <Text style={styles.emptyHint}>还没有你添加的地点</Text> : null}
+              <Pressable onPress={resetExploreFilters} style={styles.clearButton}>
+                <Text style={styles.clearButtonText}>清除筛选</Text>
+              </Pressable>
             </View>
-
-            <View style={styles.controlSection}>
-              <Text style={styles.controlTitle}>地点范围</Text>
-              <View style={styles.sortRow}>
-                <Pressable
-                  onPress={() => setShowFavoritesOnly(false)}
-                  style={[
-                    styles.sortChip,
-                    !showFavoritesOnly ? styles.sortChipActive : styles.sortChipInactive,
-                  ]}>
-                  <Text
-                    style={[
-                      styles.sortChipText,
-                      !showFavoritesOnly
-                        ? styles.sortChipTextActive
-                        : styles.sortChipTextInactive,
-                    ]}>
-                    全部地点
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={() => setShowFavoritesOnly(true)}
-                  style={[
-                    styles.sortChip,
-                    showFavoritesOnly ? styles.sortChipActive : styles.sortChipInactive,
-                  ]}>
-                  <Text
-                    style={[
-                      styles.sortChipText,
-                      showFavoritesOnly
-                        ? styles.sortChipTextActive
-                        : styles.sortChipTextInactive,
-                    ]}>
-                    仅看已收藏
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-
-            <View style={styles.controlSection}>
-              <Text style={styles.controlTitle}>排序方式</Text>
-              <View style={styles.sortRow}>
-                <Pressable
-                  onPress={() => setSortMode('popular')}
-                  style={[
-                    styles.sortChip,
-                    sortMode === 'popular' ? styles.sortChipActive : styles.sortChipInactive,
-                  ]}>
-                  <Text
-                    style={[
-                      styles.sortChipText,
-                      sortMode === 'popular'
-                        ? styles.sortChipTextActive
-                        : styles.sortChipTextInactive,
-                    ]}>
-                    热门推荐
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={() => setSortMode('name')}
-                  style={[
-                    styles.sortChip,
-                    sortMode === 'name' ? styles.sortChipActive : styles.sortChipInactive,
-                  ]}>
-                  <Text
-                    style={[
-                      styles.sortChipText,
-                      sortMode === 'name' ? styles.sortChipTextActive : styles.sortChipTextInactive,
-                    ]}>
-                    名称排序
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={() => setSortMode('distance')}
-                  style={[
-                    styles.sortChip,
-                    sortMode === 'distance' ? styles.sortChipActive : styles.sortChipInactive,
-                  ]}>
-                  <Text
-                    style={[
-                      styles.sortChipText,
-                      sortMode === 'distance'
-                        ? styles.sortChipTextActive
-                        : styles.sortChipTextInactive,
-                    ]}>
-                    距离优先
-                  </Text>
-                </Pressable>
-              </View>
-
-              {sortMode === 'distance' && !userLoc ? (
-                <Text style={styles.helperText}>暂未获取位置，当前已自动降级为热门推荐</Text>
-              ) : null}
-            </View>
-
-            <View style={styles.controlSection}>
-              <Text style={styles.controlTitle}>标签筛选</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.tagContent}>
-                <Pressable
-                  onPress={() => setSelectedTag(null)}
-                  style={[
-                    styles.tagChip,
-                    selectedTag === null ? styles.tagChipActive : styles.tagChipInactive,
-                  ]}>
-                  <Text
-                    style={[
-                      styles.tagChipText,
-                      selectedTag === null
-                        ? styles.tagChipTextActive
-                        : styles.tagChipTextInactive,
-                    ]}>
-                    全部
-                  </Text>
-                </Pressable>
-
-                {allTags.map((tag) => (
-                  <Pressable
-                    key={tag}
-                    onPress={() => setSelectedTag(tag)}
-                    style={[
-                      styles.tagChip,
-                      selectedTag === tag ? styles.tagChipActive : styles.tagChipInactive,
-                    ]}>
-                    <Text
-                      style={[
-                        styles.tagChipText,
-                        selectedTag === tag
-                          ? styles.tagChipTextActive
-                          : styles.tagChipTextInactive,
-                      ]}>
-                      {tag}
-                    </Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </View>
-
-            <View style={styles.feedbackCard}>
-              <Text style={styles.feedbackTitle}>当前筛选</Text>
-              <View style={styles.feedbackGrid}>
-                <View style={styles.feedbackItem}>
-                  <Text style={styles.feedbackLabel}>搜索</Text>
-                  <Text style={styles.feedbackValue}>{searchQuery ? searchQuery : '无'}</Text>
-                </View>
-                <View style={styles.feedbackItem}>
-                  <Text style={styles.feedbackLabel}>来源</Text>
-                  <Text style={styles.feedbackValue}>{showUserOnly ? '仅看我添加的' : '全部'}</Text>
-                </View>
-                <View style={styles.feedbackItem}>
-                  <Text style={styles.feedbackLabel}>收藏过滤</Text>
-                  <Text style={styles.feedbackValue}>{showFavoritesOnly ? '仅看已收藏' : '全部'}</Text>
-                </View>
-                <View style={styles.feedbackItem}>
-                  <Text style={styles.feedbackLabel}>排序</Text>
-                  <Text style={styles.feedbackValue}>{SORT_MODE_LABELS[sortMode]}</Text>
-                </View>
-                <View style={styles.feedbackItem}>
-                  <Text style={styles.feedbackLabel}>标签</Text>
-                  <Text style={styles.feedbackValue}>{selectedTag ?? '全部'}</Text>
-                </View>
-                <View style={styles.feedbackItem}>
-                  <Text style={styles.feedbackLabel}>结果</Text>
-                  <Text style={styles.feedbackValue}>{filteredSpots.length} 个地点</Text>
-                </View>
-              </View>
-            </View>
-
-            {recentViewedSpots.length > 0 ? (
-              <View style={styles.recentSection}>
-                <Text style={styles.recentTitle}>最近浏览</Text>
-                <Text style={styles.recentSubtitle}>快速回到你刚刚看过的地点</Text>
-
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.recentContent}>
-                  {recentViewedSpots.map((spot) => (
+          ) : null
+        }
+        renderItem={({ item }) => {
+          if (item.type === 'sticky') {
+            return (
+              <View style={styles.stickyBar}>
+                <View style={styles.stickyControls}>
+                  <View style={styles.stickyRow}>
+                    <Text style={styles.stickyLabel}>来源</Text>
                     <Pressable
-                      key={spot.id}
-                      onPress={() => handleSelectSpot(spot.id)}
-                      style={styles.recentItem}>
-                      <Text style={styles.recentItemText} numberOfLines={1}>
-                        {spot.name}
+                      onPress={() => setShowUserOnly(false)}
+                      style={[
+                        styles.stickyChip,
+                        !showUserOnly ? styles.stickyChipActive : styles.stickyChipInactive,
+                      ]}>
+                      <Text
+                        style={[
+                          styles.stickyChipText,
+                          !showUserOnly ? styles.stickyChipTextActive : styles.stickyChipTextInactive,
+                        ]}>
+                        全部
                       </Text>
                     </Pressable>
-                  ))}
-                </ScrollView>
+                    <Pressable
+                      onPress={() => setShowUserOnly(true)}
+                      style={[
+                        styles.stickyChip,
+                        showUserOnly ? styles.stickyChipActive : styles.stickyChipInactive,
+                      ]}>
+                      <Text
+                        style={[
+                          styles.stickyChipText,
+                          showUserOnly ? styles.stickyChipTextActive : styles.stickyChipTextInactive,
+                        ]}>
+                        我添加的
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  <View style={styles.stickyRow}>
+                    <Text style={styles.stickyLabel}>范围</Text>
+                    <Pressable
+                      onPress={() => setShowFavoritesOnly(false)}
+                      style={[
+                        styles.stickyChip,
+                        !showFavoritesOnly ? styles.stickyChipActive : styles.stickyChipInactive,
+                      ]}>
+                      <Text
+                        style={[
+                          styles.stickyChipText,
+                          !showFavoritesOnly
+                            ? styles.stickyChipTextActive
+                            : styles.stickyChipTextInactive,
+                        ]}>
+                        全部
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => setShowFavoritesOnly(true)}
+                      style={[
+                        styles.stickyChip,
+                        showFavoritesOnly ? styles.stickyChipActive : styles.stickyChipInactive,
+                      ]}>
+                      <Text
+                        style={[
+                          styles.stickyChipText,
+                          showFavoritesOnly
+                            ? styles.stickyChipTextActive
+                            : styles.stickyChipTextInactive,
+                        ]}>
+                        已收藏
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  <View style={styles.stickyRow}>
+                    <Text style={styles.stickyLabel}>排序</Text>
+                    <Pressable
+                      onPress={() => setSortMode('popular')}
+                      style={[
+                        styles.stickyChip,
+                        sortMode === 'popular' ? styles.stickyChipActive : styles.stickyChipInactive,
+                      ]}>
+                      <Text
+                        style={[
+                          styles.stickyChipText,
+                          sortMode === 'popular'
+                            ? styles.stickyChipTextActive
+                            : styles.stickyChipTextInactive,
+                        ]}>
+                        热门
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => setSortMode('name')}
+                      style={[
+                        styles.stickyChip,
+                        sortMode === 'name' ? styles.stickyChipActive : styles.stickyChipInactive,
+                      ]}>
+                      <Text
+                        style={[
+                          styles.stickyChipText,
+                          sortMode === 'name'
+                            ? styles.stickyChipTextActive
+                            : styles.stickyChipTextInactive,
+                        ]}>
+                        名称
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => setSortMode('distance')}
+                      style={[
+                        styles.stickyChip,
+                        sortMode === 'distance'
+                          ? styles.stickyChipActive
+                          : styles.stickyChipInactive,
+                      ]}>
+                      <Text
+                        style={[
+                          styles.stickyChipText,
+                          sortMode === 'distance'
+                            ? styles.stickyChipTextActive
+                            : styles.stickyChipTextInactive,
+                        ]}>
+                        距离
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+
+                <View style={styles.stickyFooter}>
+                  <Text style={styles.resultSummary}>
+                    {SORT_MODE_LABELS[sortMode]} · {selectedTag ?? '全部标签'} · {filteredSpots.length} 个结果
+                  </Text>
+                  <Pressable
+                    onPress={() => setIsTagExpanded((current) => !current)}
+                    style={styles.moreFilterButton}>
+                    <Text style={styles.moreFilterButtonText}>
+                      {isTagExpanded ? '收起标签' : '更多筛选'}
+                    </Text>
+                  </Pressable>
+                </View>
               </View>
-            ) : null}
-          </View>
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>暂时没有符合条件的地点</Text>
-            <Text style={styles.emptyDescription}>试试更换关键词、标签，或者直接清除筛选。</Text>
-            {showUserOnly ? <Text style={styles.emptyHint}>还没有你添加的地点</Text> : null}
-            <Pressable onPress={resetExploreFilters} style={styles.clearButton}>
-              <Text style={styles.clearButtonText}>清除筛选</Text>
+            );
+          }
+
+          if (item.type === 'aux') {
+            return (
+              <View style={styles.auxSection}>
+                {isTagExpanded ? (
+                  <View style={styles.expandedTagSection}>
+                    <Text style={styles.expandedTagTitle}>标签筛选</Text>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.tagContent}>
+                      <Pressable
+                        onPress={() => setSelectedTag(null)}
+                        style={[
+                          styles.tagChip,
+                          selectedTag === null ? styles.tagChipActive : styles.tagChipInactive,
+                        ]}>
+                        <Text
+                          style={[
+                            styles.tagChipText,
+                            selectedTag === null
+                              ? styles.tagChipTextActive
+                              : styles.tagChipTextInactive,
+                          ]}>
+                          全部
+                        </Text>
+                      </Pressable>
+
+                      {allTags.map((tag) => (
+                        <Pressable
+                          key={tag}
+                          onPress={() => setSelectedTag(tag)}
+                          style={[
+                            styles.tagChip,
+                            selectedTag === tag ? styles.tagChipActive : styles.tagChipInactive,
+                          ]}>
+                          <Text
+                            style={[
+                              styles.tagChipText,
+                              selectedTag === tag
+                                ? styles.tagChipTextActive
+                                : styles.tagChipTextInactive,
+                            ]}>
+                            {tag}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                  </View>
+                ) : null}
+
+                {sortMode === 'distance' && !userLoc ? (
+                  <Text style={styles.helperText}>暂未获取位置，已自动按热门排序</Text>
+                ) : null}
+
+                {recentViewedSpots.length > 0 ? (
+                  <View style={styles.recentSection}>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.recentContent}>
+                      {recentViewedSpots.map((spot) => (
+                        <Pressable
+                          key={spot.id}
+                          onPress={() => handleSelectSpot(spot.id)}
+                          style={styles.recentItem}>
+                          <Text style={styles.recentItemText} numberOfLines={1}>
+                            {spot.name}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                  </View>
+                ) : null}
+              </View>
+            );
+          }
+
+          const spot = item.spot;
+
+          return (
+            <Pressable onPress={() => handleSelectSpot(spot.id)} style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.name}>{spot.name}</Text>
+              </View>
+              <View style={styles.badgeRow}>
+                <Text style={styles.favoriteStatus}>
+                  {isFavorite(spot.id) ? '已收藏' : '未收藏'}
+                </Text>
+                <Text
+                  style={[
+                    styles.sourceBadge,
+                    spot.source === 'user' ? styles.userSourceBadge : styles.systemSourceBadge,
+                  ]}>
+                  {spot.source === 'user' ? '我添加的' : '系统收录'}
+                </Text>
+              </View>
+              <Text style={styles.meta}>
+                {spot.district} · {spot.addressHint}
+              </Text>
+              <View style={styles.tagRow}>
+                {spot.tags.map((tag) => (
+                  <Text key={`${spot.id}-${tag}`} style={styles.spotTagChip}>
+                    {tag}
+                  </Text>
+                ))}
+              </View>
+              <Text style={styles.description}>{spot.description}</Text>
+              <View style={styles.cardFooter}>
+                {userLoc ? (
+                  <Text style={styles.distance}>
+                    距离你约 {formatDistance(getDistanceMeters(userLoc, { lat: spot.lat, lng: spot.lng }))}
+                  </Text>
+                ) : (
+                  <Text style={styles.distancePlaceholder}>尚未获取位置</Text>
+                )}
+                <Text style={styles.votes}>{spot.votes} votes</Text>
+              </View>
             </Pressable>
-          </View>
-        }
-        renderItem={({ item }) => (
-          <Pressable onPress={() => handleSelectSpot(item.id)} style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.name}>{item.name}</Text>
-            </View>
-            <View style={styles.badgeRow}>
-              <Text style={styles.favoriteStatus}>
-                {isFavorite(item.id) ? '已收藏' : '未收藏'}
-              </Text>
-              <Text
-                style={[
-                  styles.sourceBadge,
-                  item.source === 'user' ? styles.userSourceBadge : styles.systemSourceBadge,
-                ]}>
-                {item.source === 'user' ? '我添加的' : '系统收录'}
-              </Text>
-            </View>
-            <Text style={styles.meta}>
-              {item.district} · {item.addressHint}
-            </Text>
-            <View style={styles.tagRow}>
-              {item.tags.map((tag) => (
-                <Text key={`${item.id}-${tag}`} style={styles.spotTagChip}>
-                  {tag}
-                </Text>
-              ))}
-            </View>
-            <Text style={styles.description}>{item.description}</Text>
-            <View style={styles.cardFooter}>
-              {userLoc ? (
-                <Text style={styles.distance}>
-                  距离你约 {formatDistance(getDistanceMeters(userLoc, { lat: item.lat, lng: item.lng }))}
-                </Text>
-              ) : (
-                <Text style={styles.distancePlaceholder}>尚未获取位置</Text>
-              )}
-              <Text style={styles.votes}>{item.votes} votes</Text>
-            </View>
-          </Pressable>
-        )}
+          );
+        }}
       />
     </View>
   );
@@ -368,7 +379,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   header: {
-    marginBottom: 16,
+    marginBottom: 12,
   },
   eyebrow: {
     fontSize: 12,
@@ -383,44 +394,11 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#111827',
   },
-  subtitle: {
-    marginTop: 10,
-    fontSize: 15,
-    lineHeight: 22,
-    color: '#6B7280',
-  },
-  mySpotsEntry: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 20,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    padding: 18,
-  },
-  mySpotsCopy: {
-    flex: 1,
-  },
-  mySpotsTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#111827',
-  },
-  mySpotsSubtitle: {
-    marginTop: 6,
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  mySpotsArrow: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#2563EB',
-  },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginTop: 20,
+    marginTop: 14,
   },
   searchInput: {
     flex: 1,
@@ -444,64 +422,101 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#111827',
   },
-  controlSection: {
-    marginTop: 20,
-    borderRadius: 18,
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-  },
-  controlTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  sortRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 12,
-  },
-  sortChip: {
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  sortChipActive: {
-    backgroundColor: '#111827',
-  },
-  sortChipInactive: {
-    backgroundColor: '#FFFFFF',
-  },
-  sortChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  sortChipTextActive: {
-    color: '#FFFFFF',
-  },
-  sortChipTextInactive: {
-    color: '#111827',
-  },
-  helperText: {
-    marginTop: 10,
-    fontSize: 13,
+  subtitle: {
+    marginTop: 6,
+    fontSize: 12,
     color: '#6B7280',
   },
+  stickyBar: {
+    marginBottom: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+    padding: 12,
+  },
+  stickyControls: {
+    gap: 8,
+  },
+  stickyRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    alignItems: 'center',
+  },
+  stickyLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6B7280',
+    marginRight: 2,
+  },
+  stickyChip: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  stickyChipActive: {
+    backgroundColor: '#111827',
+  },
+  stickyChipInactive: {
+    backgroundColor: '#F3F4F6',
+  },
+  stickyChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  stickyChipTextActive: {
+    color: '#FFFFFF',
+  },
+  stickyChipTextInactive: {
+    color: '#111827',
+  },
+  stickyFooter: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  resultSummary: {
+    flex: 1,
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  moreFilterButton: {
+    borderRadius: 999,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  moreFilterButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1D4ED8',
+  },
+  expandedTagSection: {
+    marginTop: 6,
+  },
+  expandedTagTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6B7280',
+    marginBottom: 6,
+  },
   tagContent: {
-    gap: 10,
-    marginTop: 12,
-    paddingBottom: 4,
+    gap: 8,
+    paddingBottom: 2,
   },
   tagChip: {
     borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   tagChipActive: {
     backgroundColor: '#2563EB',
   },
   tagChipInactive: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F3F4F6',
   },
   tagChipText: {
     fontSize: 13,
@@ -513,63 +528,29 @@ const styles = StyleSheet.create({
   tagChipTextInactive: {
     color: '#111827',
   },
-  feedbackCard: {
-    marginTop: 20,
-    borderRadius: 18,
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-  },
-  feedbackTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  feedbackGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginTop: 14,
-  },
-  feedbackItem: {
-    width: '47%',
-  },
-  feedbackLabel: {
+  helperText: {
+    marginTop: 6,
     fontSize: 12,
     color: '#6B7280',
   },
-  feedbackValue: {
-    marginTop: 4,
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
+  auxSection: {
+    marginBottom: 6,
+    gap: 6,
   },
   recentSection: {
-    marginTop: 20,
-    borderRadius: 18,
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-  },
-  recentTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  recentSubtitle: {
-    marginTop: 6,
-    fontSize: 14,
-    color: '#6B7280',
+    marginTop: 2,
   },
   recentContent: {
-    paddingTop: 12,
-    paddingBottom: 4,
-    gap: 10,
+    gap: 8,
   },
   recentItem: {
     maxWidth: 180,
     borderRadius: 999,
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   recentItemText: {
     fontSize: 13,
