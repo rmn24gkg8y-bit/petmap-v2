@@ -116,6 +116,7 @@ type PetMapStoreValue = {
   isFavorite: (id: string) => boolean;
   isInboxItemRead: (id: string) => boolean;
   markInboxItemAsRead: (id: string) => void;
+  markAllInboxItemsAsRead: () => void;
   addFeedbackRecord: (
     record: Omit<FeedbackRecord, 'id' | 'sourceType' | 'createdAt' | 'status' | 'reply'>
   ) => void;
@@ -574,6 +575,25 @@ export function PetMapProvider({ children }: PropsWithChildren) {
             ...current,
             [id]: new Date().toISOString(),
           };
+        });
+      },
+      markAllInboxItemsAsRead: () => {
+        const now = new Date().toISOString();
+
+        setInboxReadAtByMessageId((current) => {
+          const unreadItems = inboxItems.filter((item) => !current[item.id]);
+
+          if (unreadItems.length === 0) {
+            return current;
+          }
+
+          const nextReadMap = { ...current };
+
+          for (const item of unreadItems) {
+            nextReadMap[item.id] = now;
+          }
+
+          return nextReadMap;
         });
       },
       addFeedbackRecord: (
