@@ -1,11 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import type { FeedbackRecord } from '@/types/inbox';
 import type { Spot } from '@/types/spot';
 
 const FAVORITE_IDS_KEY = 'petmap.favoriteIds';
 const RECENT_VIEWED_IDS_KEY = 'petmap.recentViewedIds';
 const USER_CREATED_SPOTS_KEY = 'petmap.userCreatedSpots';
 const FORMATTED_ADDRESS_MAP_KEY = 'petmap.formattedAddressBySpotId';
+const FEEDBACK_RECORDS_KEY = 'petmap.feedbackRecords';
 
 function parseStringArray(value: string | null): string[] {
   if (!value) {
@@ -168,6 +170,75 @@ async function loadSpots(key: string): Promise<Spot[]> {
 async function saveSpots(key: string, value: Spot[]) {
   try {
     await AsyncStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Ignore persistence errors for now and keep the in-memory state usable.
+  }
+}
+
+function parseFeedbackRecord(value: unknown): FeedbackRecord | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  if (
+    record.sourceType !== 'feedback' ||
+    typeof record.id !== 'string' ||
+    (record.feedbackType !== 'spot' &&
+      record.feedbackType !== 'activity' &&
+      record.feedbackType !== 'product' &&
+      record.feedbackType !== 'bug') ||
+    typeof record.title !== 'string' ||
+    typeof record.content !== 'string' ||
+    typeof record.createdAt !== 'string' ||
+    record.status !== 'received' ||
+    (record.contextType !== 'spot' &&
+      record.contextType !== 'activity' &&
+      record.contextType !== 'none')
+  ) {
+    return null;
+  }
+
+  return {
+    id: record.id,
+    sourceType: 'feedback',
+    feedbackType: record.feedbackType,
+    title: record.title,
+    content: record.content,
+    createdAt: record.createdAt,
+    status: 'received',
+    contextType: record.contextType,
+    spotId: typeof record.spotId === 'string' ? record.spotId : undefined,
+    spotName: typeof record.spotName === 'string' ? record.spotName : undefined,
+    activityKey: typeof record.activityKey === 'string' ? record.activityKey : undefined,
+    activityTitle: typeof record.activityTitle === 'string' ? record.activityTitle : undefined,
+  };
+}
+
+export async function loadFeedbackRecords(): Promise<FeedbackRecord[]> {
+  try {
+    const value = await AsyncStorage.getItem(FEEDBACK_RECORDS_KEY);
+
+    if (!value) {
+      return [];
+    }
+
+    const parsed = JSON.parse(value);
+
+    return Array.isArray(parsed)
+      ? parsed
+          .map((item) => parseFeedbackRecord(item))
+          .filter((item): item is FeedbackRecord => item !== null)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveFeedbackRecords(value: FeedbackRecord[]) {
+  try {
+    await AsyncStorage.setItem(FEEDBACK_RECORDS_KEY, JSON.stringify(value));
   } catch {
     // Ignore persistence errors for now and keep the in-memory state usable.
   }

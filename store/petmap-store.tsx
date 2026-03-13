@@ -11,20 +11,24 @@ import {
   fetchSystemSpotsFromCloud,
   getFallbackSystemSpots,
 } from '@/repo/cloudSpotsRepo';
+import { PLATFORM_INBOX_MESSAGES } from '@/constants/inbox';
 import {
   hasSpotSubmissionEndpointConfigured,
   submitSpotForReviewToCloud,
 } from '@/repo/cloudSubmissionRepo';
 import {
   loadFormattedAddressBySpotId,
+  loadFeedbackRecords,
   loadFavoriteIds,
   loadRecentViewedIds,
   loadUserCreatedSpots,
   saveFormattedAddressBySpotId,
+  saveFeedbackRecords,
   saveFavoriteIds,
   saveRecentViewedIds,
   saveUserCreatedSpots,
 } from '@/repo/storageRepo';
+import type { FeedbackRecord, InboxItem } from '@/types/inbox';
 import type { Spot } from '@/types/spot';
 import { getDistanceMeters } from '@/utils/distance';
 
@@ -53,6 +57,8 @@ type PetMapStoreValue = {
   filteredSpots: Spot[];
   totalSpots: number;
   favoriteCount: number;
+  feedbackRecords: FeedbackRecord[];
+  inboxItems: InboxItem[];
   addSpot: (spot: Spot) => void;
   updateSpot: (spot: Spot) => void;
   removeSpot: (id: string) => void;
@@ -78,6 +84,7 @@ type PetMapStoreValue = {
   resetExploreFilters: () => void;
   setUserLoc: (loc: UserLoc) => void;
   isFavorite: (id: string) => boolean;
+  addFeedbackRecord: (record: Omit<FeedbackRecord, 'id' | 'sourceType' | 'createdAt' | 'status'>) => void;
 };
 
 const PetMapContext = createContext<PetMapStoreValue | undefined>(undefined);
@@ -90,6 +97,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
   const [formattedAddressBySpotId, setFormattedAddressBySpotId] = useState<Record<string, string>>(
     {}
   );
+  const [feedbackRecords, setFeedbackRecords] = useState<FeedbackRecord[]>([]);
   const [selectedSpotId, setSelectedSpotId] = useState<string | null>(null);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [recentViewedIds, setRecentViewedIds] = useState<string[]>([]);
@@ -145,11 +153,13 @@ export function PetMapProvider({ children }: PropsWithChildren) {
         storedRecentViewedIds,
         storedUserCreatedSpots,
         storedFormattedAddressBySpotId,
+        storedFeedbackRecords,
       ] = await Promise.all([
         loadFavoriteIds(),
         loadRecentViewedIds(),
         loadUserCreatedSpots(),
         loadFormattedAddressBySpotId(),
+        loadFeedbackRecords(),
       ]);
 
       if (!isMounted) {
@@ -176,6 +186,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
         ...storedFormattedAddressBySpotId,
         ...current,
       }));
+      setFeedbackRecords(storedFeedbackRecords);
       setHasHydratedStorage(true);
     }
 
@@ -223,6 +234,14 @@ export function PetMapProvider({ children }: PropsWithChildren) {
     );
     saveFormattedAddressBySpotId(formattedAddressBySpotId);
   }, [formattedAddressBySpotId, hasHydratedStorage]);
+
+  useEffect(() => {
+    if (!hasHydratedStorage) {
+      return;
+    }
+
+    saveFeedbackRecords(feedbackRecords);
+  }, [feedbackRecords, hasHydratedStorage]);
 
   const value = useMemo(() => {
     const systemSpotHitCount = systemSpots.filter(
@@ -307,6 +326,9 @@ export function PetMapProvider({ children }: PropsWithChildren) {
 
       return b.votes - a.votes;
     });
+    const inboxItems = [...feedbackRecords, ...PLATFORM_INBOX_MESSAGES].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
 
     return {
       hasHydratedStorage,
@@ -330,6 +352,8 @@ export function PetMapProvider({ children }: PropsWithChildren) {
       filteredSpots,
       totalSpots: spots.length,
       favoriteCount: favoriteIds.length,
+      feedbackRecords,
+      inboxItems,
       addSpot: (spot: Spot) => {
         setUserCreatedSpots((current) => [...current, spot]);
       },
@@ -490,6 +514,27 @@ export function PetMapProvider({ children }: PropsWithChildren) {
       },
       setUserLoc,
       isFavorite,
+      addFeedbackRecord: (
+        record: Omit<FeedbackRecord, 'id' | 'sourceType' | 'createdAt' | 'status'>
+      ) => {
+        setFeedbackRecords((current) => [
+          {
+            id: `feedback-${Date.now()}`,
+            sourceType: 'feedback',
+            feedbackType: record.feedbackType,
+            title: record.title,
+            content: record.content,
+            createdAt: new Date().toISOString(),
+            status: 'received',
+            contextType: record.contextType,
+            spotId: record.spotId,
+            spotName: record.spotName,
+            activityKey: record.activityKey,
+            activityTitle: record.activityTitle,
+          },
+          ...current,
+        ]);
+      },
     };
   }, [
     hasHydratedStorage,
@@ -503,6 +548,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
     showFavoritesOnly,
     showUserOnly,
     sortMode,
+    feedbackRecords,
     formattedAddressBySpotId,
     systemSpots,
     userLoc,
