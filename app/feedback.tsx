@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { PrimaryButton, SectionHeader, TagChip } from '@/components/ui';
@@ -56,6 +56,10 @@ export default function FeedbackScreen() {
     spotName?: string;
     spotAddress?: string;
     spotIdentityLabel?: string;
+    activityKey?: string;
+    activityTitle?: string;
+    activitySummary?: string;
+    activityStatusLabel?: string;
   }>();
   const contextType = Array.isArray(params.contextType) ? params.contextType[0] : params.contextType;
   const spotName = Array.isArray(params.spotName) ? params.spotName[0] : params.spotName;
@@ -63,8 +67,16 @@ export default function FeedbackScreen() {
   const spotIdentityLabel = Array.isArray(params.spotIdentityLabel)
     ? params.spotIdentityLabel[0]
     : params.spotIdentityLabel;
+  const activityTitle = Array.isArray(params.activityTitle) ? params.activityTitle[0] : params.activityTitle;
+  const activitySummary = Array.isArray(params.activitySummary)
+    ? params.activitySummary[0]
+    : params.activitySummary;
+  const activityStatusLabel = Array.isArray(params.activityStatusLabel)
+    ? params.activityStatusLabel[0]
+    : params.activityStatusLabel;
   const hasSpotContext = contextType === 'spot' && Boolean(spotName);
-  const defaultType: FeedbackTypeKey = 'spot';
+  const hasActivityContext = contextType === 'activity' && Boolean(activityTitle);
+  const defaultType: FeedbackTypeKey = hasActivityContext ? 'activity' : 'spot';
   const [selectedType, setSelectedType] = useState<FeedbackTypeKey>(defaultType);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -72,14 +84,24 @@ export default function FeedbackScreen() {
   const titlePlaceholder =
     hasSpotContext && selectedType === 'spot'
       ? `例如：${spotName}的信息需要更新`
+      : hasActivityContext && selectedType === 'activity'
+        ? `例如：${activityTitle}的信息建议补充`
       : activeType.titlePlaceholder;
   const contentPlaceholder =
     hasSpotContext && selectedType === 'spot'
       ? '请说明这个地点的哪部分信息不准确，例如地址、营业状态、宠物友好信息、图片或标签等。'
+      : hasActivityContext && selectedType === 'activity'
+        ? '请说明这个活动专题的哪部分信息需要调整，例如文案、地点关联、展示方式或时间信息等。'
       : activeType.contentPlaceholder;
   const helperText = hasSpotContext
     ? '当前反馈会保留地点上下文，方便你连续补充同一地点的问题。'
-    : '当前会先完成前台反馈闭环，后续也会逐步支持从地点页或活动页带入上下文信息。';
+    : hasActivityContext
+      ? '当前反馈会保留活动上下文，方便你连续补充同一个专题的问题。'
+      : '当前会先完成前台反馈闭环，后续也会逐步支持从地点页或活动页带入上下文信息。';
+
+  useEffect(() => {
+    setSelectedType(defaultType);
+  }, [defaultType, hasActivityContext, hasSpotContext, activityTitle, spotName]);
 
   function handleSubmitFeedback() {
     if (!content.trim()) {
@@ -113,6 +135,22 @@ export default function FeedbackScreen() {
               {spotIdentityLabel ? (
                 <View style={styles.contextBadgeRow}>
                   <TagChip label={spotIdentityLabel} compact />
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+          {hasActivityContext ? (
+            <View style={styles.contextCard}>
+              <Text style={styles.contextEyebrow}>当前反馈对象</Text>
+              <Text style={styles.contextTitle}>{activityTitle}</Text>
+              {activitySummary ? (
+                <Text style={styles.contextAddress} numberOfLines={3}>
+                  {activitySummary}
+                </Text>
+              ) : null}
+              {activityStatusLabel ? (
+                <View style={styles.contextBadgeRow}>
+                  <TagChip label={activityStatusLabel} compact />
                 </View>
               ) : null}
             </View>

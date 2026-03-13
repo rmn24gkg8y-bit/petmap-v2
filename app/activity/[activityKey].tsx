@@ -67,6 +67,29 @@ export default function ActivityCollectionScreen() {
             />
           )}
 
+          <View style={styles.feedbackSection}>
+            <Text style={styles.feedbackHintText}>
+              如果你发现活动专题信息需要补充或调整，可以直接反馈给平台继续整理。
+            </Text>
+            <Pressable
+              onPress={() =>
+                router.push({
+                  pathname: '/feedback',
+                  params: {
+                    type: 'activity',
+                    contextType: 'activity',
+                    activityKey: activity.key,
+                    activityTitle: activity.title,
+                    activitySummary: activity.summary,
+                    activityStatusLabel: activity.statusLabel,
+                  },
+                })
+              }
+              style={styles.feedbackButton}>
+              <Text style={styles.feedbackButtonText}>反馈活动内容</Text>
+            </Pressable>
+          </View>
+
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionTitle}>相关地点推荐</Text>
             <TagChip label={`${relatedSpots.length} 个`} compact />
@@ -143,6 +166,34 @@ const styles = StyleSheet.create({
   },
   heroVisual: {
     ...theme.shadows.card,
+  },
+  feedbackSection: {
+    marginTop: theme.spacing.sm,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceMuted,
+    padding: theme.spacing.sm,
+    gap: theme.spacing.sm,
+  },
+  feedbackHintText: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: theme.colors.textSecondary,
+  },
+  feedbackButton: {
+    alignSelf: 'flex-start',
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    borderColor: '#D7E5FF',
+    backgroundColor: theme.colors.primarySoft,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  feedbackButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.primary,
   },
   sectionHeaderRow: {
     marginTop: theme.spacing.md,
