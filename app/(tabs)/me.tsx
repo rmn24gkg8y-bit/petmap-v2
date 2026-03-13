@@ -14,6 +14,19 @@ type MeActionItem = {
 
 export default function MeScreen() {
   const { favoriteSpots, userSpots } = usePetMapStore();
+  const pendingSpotsCount = userSpots.filter((spot) => spot.submissionStatus === 'pending_review').length;
+  const publishedSpotsCount = userSpots.filter((spot) => spot.verified).length;
+  const draftSpotsCount = userSpots.filter(
+    (spot) => spot.submissionStatus !== 'pending_review' && !spot.verified
+  ).length;
+  const nextStepText =
+    draftSpotsCount > 0
+      ? `你有 ${draftSpotsCount} 个地点待提交，可以继续完善后发起审核。`
+      : pendingSpotsCount > 0
+        ? `你有 ${pendingSpotsCount} 个地点正在审核中，先去看看是否还需补充信息。`
+        : userSpots.length > 0
+          ? '你的地点内容已比较完整，可以继续补充照片和说明。'
+          : '从地图长按添加你的第一个宠物友好地点，开始积累内容资产。';
 
   const actionItems: MeActionItem[] = [
     {
@@ -61,19 +74,41 @@ export default function MeScreen() {
         <View style={styles.statsRow}>
           <Pressable
             style={({ pressed }) => [styles.statCard, pressed ? styles.statCardPressed : null]}
-            onPress={() => router.push('/my-favorites')}>
-            <Text style={styles.statValue}>{favoriteSpots.length}</Text>
-            <Text style={styles.statLabel}>我的收藏</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [styles.statCard, pressed ? styles.statCardPressed : null]}
             onPress={() => router.push('/my-spots')}>
             <Text style={styles.statValue}>{userSpots.length}</Text>
             <Text style={styles.statLabel}>我的地点</Text>
           </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.statCard, pressed ? styles.statCardPressed : null]}
+            onPress={() => router.push('/my-favorites')}>
+            <Text style={styles.statValue}>{favoriteSpots.length}</Text>
+            <Text style={styles.statLabel}>我的收藏</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.statsRow}>
+          <Pressable
+            style={({ pressed }) => [styles.statCard, pressed ? styles.statCardPressed : null]}
+            onPress={() => router.push('/my-spots')}>
+            <Text style={styles.statValue}>{pendingSpotsCount}</Text>
+            <Text style={styles.statLabel}>审核中</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.statCard, pressed ? styles.statCardPressed : null]}
+            onPress={() => router.push('/my-spots')}>
+            <Text style={styles.statValue}>{publishedSpotsCount}</Text>
+            <Text style={styles.statLabel}>已发布</Text>
+          </Pressable>
         </View>
 
         <View style={styles.sectionCard}>
+          <Text style={styles.sectionEyebrow}>下一步</Text>
+          <Text style={styles.sectionTitle}>内容提醒</Text>
+          <Text style={styles.sectionDescription}>{nextStepText}</Text>
+        </View>
+
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionEyebrow}>快捷入口</Text>
           <Text style={styles.sectionTitle}>功能入口</Text>
           <View style={styles.actionList}>
             {actionItems.map((item) => (
@@ -187,6 +222,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: theme.colors.textPrimary,
+  },
+  sectionEyebrow: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.primary,
+    marginBottom: 6,
+  },
+  sectionDescription: {
+    marginTop: 8,
+    fontSize: 13,
+    lineHeight: 19,
+    color: theme.colors.textSecondary,
   },
   actionList: {
     marginTop: theme.spacing.sm,
