@@ -1,4 +1,5 @@
-import { router } from 'expo-router';
+import { Stack, router } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { SectionHeader } from '@/components/ui';
@@ -15,7 +16,7 @@ type MeActionItem = {
 type MySpotsStatusFilter = 'all' | 'other' | 'pending' | 'published';
 
 export default function MeScreen() {
-  const { favoriteSpots, userSpots } = usePetMapStore();
+  const { favoriteSpots, inboxItems, userSpots } = usePetMapStore();
   const pendingSpotsCount = userSpots.filter((spot) => spot.submissionStatus === 'pending_review').length;
   const publishedSpotsCount = userSpots.filter((spot) => spot.verified).length;
   const draftSpotsCount = userSpots.filter(
@@ -81,6 +82,22 @@ export default function MeScreen() {
 
   return (
     <View style={styles.container}>
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <Pressable
+              onPress={() => router.push('/inbox')}
+              style={({ pressed }) => [styles.inboxButton, pressed ? styles.inboxButtonPressed : null]}>
+              <SymbolView
+                name={{ ios: 'bubble.left.and.bubble.right', android: 'chat', web: 'chat' }}
+                tintColor={theme.colors.textPrimary}
+                size={18}
+              />
+              {inboxItems.length > 0 ? <View style={styles.inboxDot} /> : null}
+            </Pressable>
+          ),
+        }}
+      />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <SectionHeader
           eyebrow="个人页"
@@ -179,6 +196,29 @@ const styles = StyleSheet.create({
   },
   pageHeader: {
     marginBottom: 0,
+  },
+  inboxButton: {
+    width: 36,
+    height: 36,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.cardBackground,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 4,
+  },
+  inboxButtonPressed: {
+    opacity: 0.86,
+  },
+  inboxDot: {
+    position: 'absolute',
+    top: 7,
+    right: 7,
+    width: 8,
+    height: 8,
+    borderRadius: theme.radii.pill,
+    backgroundColor: theme.colors.primary,
   },
   profileCard: {
     flexDirection: 'row',

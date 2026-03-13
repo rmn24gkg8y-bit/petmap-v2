@@ -4,6 +4,7 @@ import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-nati
 
 import { PrimaryButton, SectionHeader, TagChip } from '@/components/ui';
 import { theme } from '@/constants/theme';
+import { usePetMapStore } from '@/store/petmap-store';
 
 type FeedbackTypeKey = 'spot' | 'activity' | 'product' | 'bug';
 
@@ -49,6 +50,7 @@ function getFeedbackTypeConfig(type: FeedbackTypeKey) {
 }
 
 export default function FeedbackScreen() {
+  const { addFeedbackRecord } = usePetMapStore();
   const params = useLocalSearchParams<{
     type?: string;
     contextType?: string;
@@ -104,10 +106,28 @@ export default function FeedbackScreen() {
   }, [defaultType, hasActivityContext, hasSpotContext, activityTitle, spotName]);
 
   function handleSubmitFeedback() {
-    if (!content.trim()) {
+    const trimmedContent = content.trim();
+    const trimmedTitle = title.trim();
+
+    if (!trimmedContent) {
       Alert.alert('请补充反馈内容', '至少写下你遇到的问题、建议，或需要我们核对的信息。');
       return;
     }
+
+    addFeedbackRecord({
+      feedbackType: selectedType,
+      title: trimmedTitle || activeType.label,
+      content: trimmedContent,
+      contextType: hasSpotContext ? 'spot' : hasActivityContext ? 'activity' : 'none',
+      spotId: hasSpotContext ? params.spotId : undefined,
+      spotName: hasSpotContext ? spotName ?? undefined : undefined,
+      activityKey: hasActivityContext
+        ? Array.isArray(params.activityKey)
+          ? params.activityKey[0]
+          : params.activityKey
+        : undefined,
+      activityTitle: hasActivityContext ? activityTitle ?? undefined : undefined,
+    });
 
     Alert.alert('反馈已收到', '感谢你的反馈，我们会结合内容持续整理和优化。');
     setSelectedType(defaultType);
