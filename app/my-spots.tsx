@@ -1,5 +1,5 @@
-import { router, Stack } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { EmptyStateCard, PrimaryButton, SectionHeader, SpotCard, StatusBadge, TagChip } from '@/components/ui';
@@ -60,10 +60,24 @@ function getSpotStatusMeta(spot: Spot) {
   return SPOT_STATUS_COPY[getSpotGroupKey(spot)];
 }
 
+function isStatusFilterKey(value: string): value is StatusFilterKey {
+  return value === 'all' || value === 'other' || value === 'pending' || value === 'published';
+}
+
 export default function MySpotsScreen() {
+  const params = useLocalSearchParams<{ status?: string }>();
   const { userSpots, setSelectedSpot, submitSpotForReview, removeSpot } = usePetMapStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<StatusFilterKey>('all');
+
+  useEffect(() => {
+    const nextStatus = Array.isArray(params.status) ? params.status[0] : params.status;
+
+    if (nextStatus && isStatusFilterKey(nextStatus)) {
+      setSelectedStatusFilter(nextStatus);
+    }
+  }, [params.status]);
+
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
   const filteredUserSpots = useMemo(() => {
     return userSpots.filter((spot) => {
