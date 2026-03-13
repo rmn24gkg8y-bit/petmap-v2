@@ -10,6 +10,39 @@ import type { Spot } from '@/types/spot';
 
 type SpotGroupKey = 'pending' | 'published' | 'other';
 
+const SPOT_STATUS_COPY: Record<
+  SpotGroupKey,
+  {
+    groupTitle: string;
+    groupDescription: string;
+    badgeLabel: string;
+    badgeVariant: 'pending' | 'favorite' | 'local';
+    hint: string;
+  }
+> = {
+  other: {
+    groupTitle: '待提交',
+    groupDescription: '尚未提交审核，可继续完善后提交。',
+    badgeLabel: '待提交',
+    badgeVariant: 'local',
+    hint: '完善后可提交审核。',
+  },
+  pending: {
+    groupTitle: '审核中',
+    groupDescription: '已提交，等待审核处理。',
+    badgeLabel: '审核中',
+    badgeVariant: 'pending',
+    hint: '地点正在审核中，可先查看或继续完善信息。',
+  },
+  published: {
+    groupTitle: '已发布',
+    groupDescription: '已上线，可继续维护地点信息。',
+    badgeLabel: '已发布',
+    badgeVariant: 'favorite',
+    hint: '地点已上线，可继续维护信息。',
+  },
+};
+
 function getSpotGroupKey(spot: Spot): SpotGroupKey {
   if (spot.submissionStatus === 'pending_review') {
     return 'pending';
@@ -23,27 +56,7 @@ function getSpotGroupKey(spot: Spot): SpotGroupKey {
 }
 
 function getSpotStatusMeta(spot: Spot) {
-  if (spot.submissionStatus === 'pending_review') {
-    return {
-      label: '审核中',
-      variant: 'pending' as const,
-      hint: '地点正在审核中，可先查看或继续完善信息。',
-    };
-  }
-
-  if (spot.verified) {
-    return {
-      label: '已发布',
-      variant: 'favorite' as const,
-      hint: '地点已上线，可继续维护信息。',
-    };
-  }
-
-  return {
-    label: '待提交',
-    variant: 'local' as const,
-    hint: '完善后可提交审核。',
-  };
+  return SPOT_STATUS_COPY[getSpotGroupKey(spot)];
 }
 
 export default function MySpotsScreen() {
@@ -54,9 +67,24 @@ export default function MySpotsScreen() {
     const others = userSpots.filter((spot) => getSpotGroupKey(spot) === 'other');
 
     return [
-      { key: 'pending' as const, title: '审核中', spots: pending },
-      { key: 'published' as const, title: '已发布', spots: published },
-      { key: 'other' as const, title: '待提交', spots: others },
+      {
+        key: 'pending' as const,
+        title: SPOT_STATUS_COPY.pending.groupTitle,
+        description: SPOT_STATUS_COPY.pending.groupDescription,
+        spots: pending,
+      },
+      {
+        key: 'published' as const,
+        title: SPOT_STATUS_COPY.published.groupTitle,
+        description: SPOT_STATUS_COPY.published.groupDescription,
+        spots: published,
+      },
+      {
+        key: 'other' as const,
+        title: SPOT_STATUS_COPY.other.groupTitle,
+        description: SPOT_STATUS_COPY.other.groupDescription,
+        spots: others,
+      },
     ].filter((group) => group.spots.length > 0);
   }, [userSpots]);
 
@@ -123,7 +151,10 @@ export default function MySpotsScreen() {
           groupedSpots.map((group) => (
             <View key={group.key} style={styles.groupSection}>
               <View style={styles.groupHeader}>
-                <Text style={styles.groupTitle}>{group.title}</Text>
+                <View style={styles.groupHeaderContent}>
+                  <Text style={styles.groupTitle}>{group.title}</Text>
+                  <Text style={styles.groupDescription}>{group.description}</Text>
+                </View>
                 <Text style={styles.groupCount}>{group.spots.length} 个</Text>
               </View>
               {group.spots.map((item) => {
@@ -145,7 +176,7 @@ export default function MySpotsScreen() {
                     photoUri={item.photoUris?.[0]}
                     badges={
                       <>
-                        <StatusBadge label={statusMeta.label} variant={statusMeta.variant} />
+                        <StatusBadge label={statusMeta.badgeLabel} variant={statusMeta.badgeVariant} />
                         <StatusBadge label={SPOT_TYPE_LABELS[item.spotType]} variant="system" />
                       </>
                     }
@@ -242,13 +273,23 @@ const styles = StyleSheet.create({
   groupHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: theme.spacing.xs,
+    gap: theme.spacing.xs,
+  },
+  groupHeaderContent: {
+    flex: 1,
   },
   groupTitle: {
     fontSize: 16,
     fontWeight: '800',
     color: theme.colors.textPrimary,
+  },
+  groupDescription: {
+    marginTop: 2,
+    fontSize: 12,
+    lineHeight: 17,
+    color: theme.colors.textSecondary,
   },
   groupCount: {
     fontSize: 12,
