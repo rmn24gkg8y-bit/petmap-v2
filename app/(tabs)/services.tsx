@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useMemo, type ComponentProps } from 'react';
 import { SymbolView } from 'expo-symbols';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { SectionHeader, TagChip } from '@/components/ui';
 import { ACTIVITY_COLLECTIONS, type ActivityCollection } from '@/constants/activityCollections';
@@ -189,6 +189,18 @@ export default function ServicesScreen() {
                 key={activity.key}
                 onPress={() => handleOpenActivity(activity)}
                 style={({ pressed }) => [styles.activityCard, pressed ? styles.cardPressed : null]}>
+                {activity.imageUri ? (
+                  <Image source={{ uri: activity.imageUri }} style={styles.activityImage} />
+                ) : (
+                  <View style={styles.activityImagePlaceholder}>
+                    <SymbolView
+                      name={{ ios: 'photo', android: 'photo', web: 'image' }}
+                      tintColor="#94A3B8"
+                      size={18}
+                    />
+                    <Text style={styles.activityImagePlaceholderText}>活动主视觉预留</Text>
+                  </View>
+                )}
                 <View style={styles.activityTopRow}>
                   <TagChip label={activity.statusLabel} compact />
                   {linkedSpotName ? (
@@ -348,7 +360,30 @@ const styles = StyleSheet.create({
     borderColor: '#E7EAF0',
     backgroundColor: theme.colors.cardBackground,
     paddingHorizontal: 11,
-    paddingVertical: 10,
+    paddingTop: 11,
+    paddingBottom: 10,
+  },
+  activityImage: {
+    width: '100%',
+    height: 88,
+    borderRadius: theme.radii.sm,
+    marginBottom: 9,
+  },
+  activityImagePlaceholder: {
+    width: '100%',
+    height: 88,
+    borderRadius: theme.radii.sm,
+    marginBottom: 9,
+    backgroundColor: theme.colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  activityImagePlaceholderText: {
+    fontSize: 11,
+    color: theme.colors.textSecondary,
   },
   activityTopRow: {
     flexDirection: 'row',

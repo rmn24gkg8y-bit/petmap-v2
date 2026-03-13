@@ -1,5 +1,5 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { EmptyStateCard, PrimaryButton, SectionHeader, SpotCard, TagChip } from '@/components/ui';
 import {
@@ -49,10 +49,20 @@ export default function ActivityCollectionScreen() {
             style={styles.pageHeader}
           />
 
-          <View style={styles.heroCard}>
-            <TagChip label={activity.statusLabel} compact />
-            <Text style={styles.heroText}>围绕一个主题整理相关地点，当前由平台持续补充，后续也会逐步支持更多活动内容。</Text>
-          </View>
+          {activity.imageUri ? (
+            <View style={styles.heroImageWrap}>
+              <Image source={{ uri: activity.imageUri }} style={styles.heroImage} />
+              <View style={styles.heroImageOverlay}>
+                <TagChip label={activity.statusLabel} compact />
+                <Text style={styles.heroImageText}>围绕一个主题整理相关地点，当前由平台持续补充，后续也会逐步支持更多活动内容。</Text>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.heroCard}>
+              <TagChip label={activity.statusLabel} compact />
+              <Text style={styles.heroText}>围绕一个主题整理相关地点，当前由平台持续补充，后续也会逐步支持更多活动内容。</Text>
+            </View>
+          )}
 
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionTitle}>相关地点推荐</Text>
@@ -115,6 +125,27 @@ const styles = StyleSheet.create({
     padding: theme.spacing.md,
     gap: theme.spacing.sm,
     ...theme.shadows.card,
+  },
+  heroImageWrap: {
+    borderRadius: theme.radii.lg,
+    overflow: 'hidden',
+    backgroundColor: theme.colors.cardBackground,
+    ...theme.shadows.card,
+  },
+  heroImage: {
+    width: '100%',
+    height: 180,
+    backgroundColor: theme.colors.surfaceMuted,
+  },
+  heroImageOverlay: {
+    padding: theme.spacing.md,
+    gap: theme.spacing.sm,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+  },
+  heroImageText: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: theme.colors.textSecondary,
   },
   heroText: {
     fontSize: 13,
