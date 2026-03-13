@@ -1,20 +1,12 @@
 import { router } from 'expo-router';
-import { useMemo, type ComponentProps } from 'react';
-import { SymbolView } from 'expo-symbols';
-import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMemo } from 'react';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ActivityVisual, SectionHeader, TagChip } from '@/components/ui';
 import { ACTIVITY_COLLECTIONS, type ActivityCollection } from '@/constants/activityCollections';
-import { SPOT_TYPE_LABELS } from '@/constants/spotFormOptions';
 import { theme } from '@/constants/theme';
 import { usePetMapStore } from '@/store/petmap-store';
-import type { Spot, SpotType } from '@/types/spot';
-
-type ServiceCategory = {
-  spotType: SpotType;
-  icon: ComponentProps<typeof SymbolView>['name'];
-  tint: string;
-};
+import type { Spot } from '@/types/spot';
 
 function getDisplayAddress(spot: Spot) {
   return (
@@ -38,12 +30,7 @@ export default function ServicesScreen() {
   }
 
   function handleOpenActivity(activity: ActivityCollection) {
-    if (activity.interactionMode === 'collection') {
-      router.push(`/activity/${activity.key}`);
-      return;
-    }
-
-    Alert.alert('即将支持', '活动报名和详情能力正在准备中。');
+    router.push(`/activity/${activity.key}`);
   }
 
   function renderCompactSpotCard(spot: Spot) {
