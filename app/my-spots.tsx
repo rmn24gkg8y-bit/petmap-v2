@@ -1,14 +1,15 @@
 import { router, Stack } from 'expo-router';
-import { useMemo } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { EmptyStateCard, PrimaryButton, SectionHeader, SpotCard, StatusBadge } from '@/components/ui';
+import { EmptyStateCard, PrimaryButton, SectionHeader, SpotCard, StatusBadge, TagChip } from '@/components/ui';
 import { SPOT_TYPE_LABELS } from '@/constants/spotFormOptions';
 import { theme } from '@/constants/theme';
 import { usePetMapStore } from '@/store/petmap-store';
 import type { Spot } from '@/types/spot';
 
 type SpotGroupKey = 'pending' | 'published' | 'other';
+type StatusFilterKey = 'all' | SpotGroupKey;
 
 const SPOT_STATUS_COPY: Record<
   SpotGroupKey,
@@ -61,10 +62,30 @@ function getSpotStatusMeta(spot: Spot) {
 
 export default function MySpotsScreen() {
   const { userSpots, setSelectedSpot, submitSpotForReview, removeSpot } = usePetMapStore();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState<StatusFilterKey>('all');
+  const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
+  const filteredUserSpots = useMemo(() => {
+    return userSpots.filter((spot) => {
+      const groupKey = getSpotGroupKey(spot);
+      const matchesStatus = selectedStatusFilter === 'all' || groupKey === selectedStatusFilter;
+      const matchesSearch =
+        normalizedQuery.length === 0 ||
+        [
+          spot.name,
+          spot.formattedAddress ?? '',
+          spot.district,
+          spot.addressHint,
+          ...spot.tags,
+        ].some((value) => value.toLocaleLowerCase().includes(normalizedQuery));
+
+      return matchesStatus && matchesSearch;
+    });
+  }, [normalizedQuery, selectedStatusFilter, userSpots]);
   const groupedSpots = useMemo(() => {
-    const pending = userSpots.filter((spot) => getSpotGroupKey(spot) === 'pending');
-    const published = userSpots.filter((spot) => getSpotGroupKey(spot) === 'published');
-    const others = userSpots.filter((spot) => getSpotGroupKey(spot) === 'other');
+    const pending = filteredUserSpots.filter((spot) => getSpotGroupKey(spot) === 'pending');
+    const published = filteredUserSpots.filter((spot) => getSpotGroupKey(spot) === 'published');
+    const others = filteredUserSpots.filter((spot) => getSpotGroupKey(spot) === 'other');
 
     return [
       {
@@ -86,7 +107,7 @@ export default function MySpotsScreen() {
         spots: others,
       },
     ].filter((group) => group.spots.length > 0);
-  }, [userSpots]);
+  }, [filteredUserSpots]);
 
   function handleSelectSpot(id: string) {
     setSelectedSpot(id);
@@ -148,103 +169,150 @@ export default function MySpotsScreen() {
             />
           </View>
         ) : (
-          groupedSpots.map((group) => (
-            <View key={group.key} style={styles.groupSection}>
-              <View style={styles.groupHeader}>
-                <View style={styles.groupHeaderContent}>
-                  <Text style={styles.groupTitle}>{group.title}</Text>
-                  <Text style={styles.groupDescription}>{group.description}</Text>
-                </View>
-                <Text style={styles.groupCount}>{group.spots.length} 个</Text>
+          <>
+            <View style={styles.toolbar}>
+              <View style={styles.searchRow}>
+                <TextInput
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  placeholder="搜索我的地点、地址或标签"
+                  style={styles.searchInput}
+                />
               </View>
-              {group.spots.map((item) => {
-                const statusMeta = getSpotStatusMeta(item);
-                const groupKey = getSpotGroupKey(item);
-
-                return (
-                  <SpotCard
-                    key={item.id}
-                    title={item.name}
-                    address={
-                      item.formattedAddress?.trim() ||
-                      [item.district, item.addressHint]
-                        .map((value) => value.trim())
-                        .filter(Boolean)
-                        .join(' · ') ||
-                      '地址待补充'
-                    }
-                    photoUri={item.photoUris?.[0]}
-                    badges={
-                      <>
-                        <StatusBadge label={statusMeta.badgeLabel} variant={statusMeta.badgeVariant} />
-                        <StatusBadge label={SPOT_TYPE_LABELS[item.spotType]} variant="system" />
-                      </>
-                    }
-                    tags={item.tags.slice(0, 3)}
-                    onPressTop={() => handleSelectSpot(item.id)}
-                    footer={
-                      <View style={styles.cardFooter}>
-                        <Text style={styles.statusHintText}>{statusMeta.hint}</Text>
-                        <View style={styles.actionsRow}>
-                          {groupKey === 'other' ? (
-                            <>
-                              <PrimaryButton
-                                label="提交审核"
-                                onPress={() => handleSubmitForReview(item.id)}
-                                style={styles.actionButton}
-                              />
-                              <PrimaryButton
-                                label="去地图编辑"
-                                variant="secondary"
-                                onPress={() => handleEditSpot(item.id)}
-                                style={styles.actionButton}
-                              />
-                            </>
-                          ) : null}
-                          {groupKey === 'pending' ? (
-                            <>
-                              <PrimaryButton
-                                label="查看地点"
-                                onPress={() => handleSelectSpot(item.id)}
-                                style={styles.actionButton}
-                              />
-                              <PrimaryButton
-                                label="去地图编辑"
-                                variant="secondary"
-                                onPress={() => handleEditSpot(item.id)}
-                                style={styles.actionButton}
-                              />
-                            </>
-                          ) : null}
-                          {groupKey === 'published' ? (
-                            <>
-                              <PrimaryButton
-                                label="查看地点"
-                                onPress={() => handleSelectSpot(item.id)}
-                                style={styles.actionButton}
-                              />
-                              <PrimaryButton
-                                label="去地图编辑"
-                                variant="secondary"
-                                onPress={() => handleEditSpot(item.id)}
-                                style={styles.actionButton}
-                              />
-                              <PrimaryButton
-                                label="删除地点"
-                                variant="danger"
-                                onPress={() => handleDeleteSpot(item.id)}
-                                style={styles.actionButton}
-                              />
-                            </>
-                          ) : null}
-                        </View>
-                      </View>
-                    }
-                  />
-                );
-              })}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.filterContent}>
+                <TagChip
+                  label="全部"
+                  active={selectedStatusFilter === 'all'}
+                  onPress={() => setSelectedStatusFilter('all')}
+                />
+                <TagChip
+                  label="待提交"
+                  active={selectedStatusFilter === 'other'}
+                  onPress={() => setSelectedStatusFilter('other')}
+                />
+                <TagChip
+                  label="审核中"
+                  active={selectedStatusFilter === 'pending'}
+                  onPress={() => setSelectedStatusFilter('pending')}
+                />
+                <TagChip
+                  label="已发布"
+                  active={selectedStatusFilter === 'published'}
+                  onPress={() => setSelectedStatusFilter('published')}
+                />
+              </ScrollView>
             </View>
-          ))
+
+            {groupedSpots.length === 0 ? (
+              <View style={styles.listEmpty}>
+                <EmptyStateCard
+                  title="没有符合条件的地点"
+                  description="试试更换关键词，或切换状态筛选。"
+                />
+              </View>
+            ) : (
+              groupedSpots.map((group) => (
+                <View key={group.key} style={styles.groupSection}>
+                  <View style={styles.groupHeader}>
+                    <View style={styles.groupHeaderContent}>
+                      <Text style={styles.groupTitle}>{group.title}</Text>
+                      <Text style={styles.groupDescription}>{group.description}</Text>
+                    </View>
+                    <Text style={styles.groupCount}>{group.spots.length} 个</Text>
+                  </View>
+                  {group.spots.map((item) => {
+                    const statusMeta = getSpotStatusMeta(item);
+                    const groupKey = getSpotGroupKey(item);
+
+                    return (
+                      <SpotCard
+                        key={item.id}
+                        title={item.name}
+                        address={
+                          item.formattedAddress?.trim() ||
+                          [item.district, item.addressHint]
+                            .map((value) => value.trim())
+                            .filter(Boolean)
+                            .join(' · ') ||
+                          '地址待补充'
+                        }
+                        photoUri={item.photoUris?.[0]}
+                        badges={
+                          <>
+                            <StatusBadge label={statusMeta.badgeLabel} variant={statusMeta.badgeVariant} />
+                            <StatusBadge label={SPOT_TYPE_LABELS[item.spotType]} variant="system" />
+                          </>
+                        }
+                        tags={item.tags.slice(0, 3)}
+                        onPressTop={() => handleSelectSpot(item.id)}
+                        footer={
+                          <View style={styles.cardFooter}>
+                            <Text style={styles.statusHintText}>{statusMeta.hint}</Text>
+                            <View style={styles.actionsRow}>
+                              {groupKey === 'other' ? (
+                                <>
+                                  <PrimaryButton
+                                    label="提交审核"
+                                    onPress={() => handleSubmitForReview(item.id)}
+                                    style={styles.actionButton}
+                                  />
+                                  <PrimaryButton
+                                    label="去地图编辑"
+                                    variant="secondary"
+                                    onPress={() => handleEditSpot(item.id)}
+                                    style={styles.actionButton}
+                                  />
+                                </>
+                              ) : null}
+                              {groupKey === 'pending' ? (
+                                <>
+                                  <PrimaryButton
+                                    label="查看地点"
+                                    onPress={() => handleSelectSpot(item.id)}
+                                    style={styles.actionButton}
+                                  />
+                                  <PrimaryButton
+                                    label="去地图编辑"
+                                    variant="secondary"
+                                    onPress={() => handleEditSpot(item.id)}
+                                    style={styles.actionButton}
+                                  />
+                                </>
+                              ) : null}
+                              {groupKey === 'published' ? (
+                                <>
+                                  <PrimaryButton
+                                    label="查看地点"
+                                    onPress={() => handleSelectSpot(item.id)}
+                                    style={styles.actionButton}
+                                  />
+                                  <PrimaryButton
+                                    label="去地图编辑"
+                                    variant="secondary"
+                                    onPress={() => handleEditSpot(item.id)}
+                                    style={styles.actionButton}
+                                  />
+                                  <PrimaryButton
+                                    label="删除地点"
+                                    variant="danger"
+                                    onPress={() => handleDeleteSpot(item.id)}
+                                    style={styles.actionButton}
+                                  />
+                                </>
+                              ) : null}
+                            </View>
+                          </View>
+                        }
+                      />
+                    );
+                  })}
+                </View>
+              ))
+            )}
+          </>
         )}
       </ScrollView>
     </View>
@@ -266,6 +334,29 @@ const styles = StyleSheet.create({
   },
   listEmpty: {
     marginTop: theme.spacing.sm,
+  },
+  toolbar: {
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.sm,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  searchInput: {
+    flex: 1,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.cardBackground,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: theme.colors.textPrimary,
+  },
+  filterContent: {
+    gap: theme.spacing.xs,
+    paddingBottom: 2,
   },
   groupSection: {
     marginBottom: theme.spacing.sm,
