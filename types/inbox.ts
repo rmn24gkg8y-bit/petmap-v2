@@ -3,6 +3,18 @@ export type InboxSourceType = 'feedback' | 'platform';
 export type InboxContextType = 'spot' | 'activity' | 'none';
 export type FeedbackStatus = 'received';
 export type PlatformMessageType = 'activity' | 'release' | 'reminder';
+export type PlatformMessageTarget = {
+  pathname:
+    | '/about'
+    | '/services'
+    | '/settings'
+    | '/my-spots'
+    | '/activity/[activityKey]';
+  params?: {
+    activityKey?: string;
+  };
+  ctaLabel: string;
+};
 
 export type FeedbackRecord = {
   id: string;
@@ -26,6 +38,7 @@ export type PlatformInboxMessage = {
   title: string;
   content: string;
   createdAt: string;
+  target?: PlatformMessageTarget;
 };
 
 export type InboxItem = FeedbackRecord | PlatformInboxMessage;

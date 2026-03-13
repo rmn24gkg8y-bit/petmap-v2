@@ -76,6 +76,27 @@ export default function InboxDetailScreen() {
   const messageId = Array.isArray(params.messageId) ? params.messageId[0] : params.messageId;
   const item = inboxItems.find((entry) => entry.id === messageId);
 
+  function handleOpenTarget() {
+    if (!item || item.sourceType !== 'platform' || !item.target) {
+      return;
+    }
+
+    if (
+      item.target.pathname === '/activity/[activityKey]' &&
+      item.target.params?.activityKey
+    ) {
+      router.push({
+        pathname: item.target.pathname,
+        params: {
+          activityKey: item.target.params.activityKey,
+        },
+      });
+      return;
+    }
+
+    router.push(item.target.pathname);
+  }
+
   return (
     <View style={styles.container}>
       <Stack.Screen options={{ title: item ? '消息详情' : '消息不存在' }} />
@@ -114,6 +135,17 @@ export default function InboxDetailScreen() {
             <Text style={styles.contentTitle}>完整内容</Text>
             <Text style={styles.contentText}>{item.content}</Text>
           </View>
+
+          {item.sourceType === 'platform' && item.target ? (
+            <View style={styles.actionCard}>
+              <Text style={styles.actionHint}>如果你想继续处理这条消息，可以直接前往对应页面。</Text>
+              <PrimaryButton
+                label={item.target.ctaLabel}
+                onPress={handleOpenTarget}
+                style={styles.actionButton}
+              />
+            </View>
+          ) : null}
         </ScrollView>
       )}
     </View>
@@ -192,5 +224,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
     color: theme.colors.textSecondary,
+  },
+  actionCard: {
+    borderRadius: theme.radii.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.cardBackground,
+    padding: theme.spacing.md,
+    gap: theme.spacing.sm,
+    ...theme.shadows.card,
+  },
+  actionHint: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: theme.colors.textSecondary,
+  },
+  actionButton: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
   },
 });
