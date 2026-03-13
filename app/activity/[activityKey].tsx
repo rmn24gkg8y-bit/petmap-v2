@@ -22,6 +22,7 @@ export default function ActivityCollectionScreen() {
   const { spots, setSelectedSpot } = usePetMapStore();
   const activity = getActivityCollectionByKey(params.activityKey ?? '');
   const relatedSpots = activity ? activity.spotIds.map((id) => spots.find((spot) => spot.id === id) ?? null).filter((spot): spot is Spot => spot !== null) : [];
+  const isUpcomingActivity = activity?.interactionMode === 'upcoming';
 
   function handleOpenSpot(spotId: string) {
     setSelectedSpot(spotId);
@@ -43,7 +44,7 @@ export default function ActivityCollectionScreen() {
       ) : (
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <SectionHeader
-            eyebrow="活动专题"
+            eyebrow={isUpcomingActivity ? '即将支持' : '活动专题'}
             title={activity.title}
             subtitle={activity.summary}
             style={styles.pageHeader}
@@ -67,58 +68,110 @@ export default function ActivityCollectionScreen() {
             />
           )}
 
-          <View style={styles.feedbackSection}>
-            <Text style={styles.feedbackHintText}>
-              如果你发现活动专题信息需要补充或调整，可以直接反馈给平台继续整理。
-            </Text>
-            <Pressable
-              onPress={() =>
-                router.push({
-                  pathname: '/feedback',
-                  params: {
-                    type: 'activity',
-                    contextType: 'activity',
-                    activityKey: activity.key,
-                    activityTitle: activity.title,
-                    activitySummary: activity.summary,
-                    activityStatusLabel: activity.statusLabel,
-                  },
-                })
-              }
-              style={styles.feedbackButton}>
-              <Text style={styles.feedbackButtonText}>反馈活动内容</Text>
-            </Pressable>
-          </View>
+          {isUpcomingActivity ? (
+            <>
+              <View style={styles.upcomingIntroCard}>
+                <Text style={styles.upcomingIntroTitle}>这项能力正在准备中</Text>
+                <Text style={styles.upcomingIntroText}>
+                  当前会先以专题预告形式承接，后续逐步支持活动发布、报名意向收集和更多商家活动能力。
+                </Text>
+              </View>
 
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>相关地点推荐</Text>
-            <TagChip label={`${relatedSpots.length} 个`} compact />
-          </View>
+              <View style={styles.upcomingFeatureCard}>
+                <Text style={styles.upcomingSectionTitle}>未来会支持什么</Text>
+                <View style={styles.upcomingFeatureList}>
+                  <Text style={styles.upcomingFeatureItem}>适合品牌和商家发布宠物友好活动内容</Text>
+                  <Text style={styles.upcomingFeatureItem}>活动说明、地点信息和专题主视觉会继续补齐</Text>
+                  <Text style={styles.upcomingFeatureItem}>用户可通过反馈表达报名兴趣或内容建议</Text>
+                </View>
+              </View>
 
-          {relatedSpots.length === 0 ? (
-            <EmptyStateCard
-              title="暂时没有可展示的关联地点"
-              description="活动内容已建立，相关地点仍在整理中。"
-            />
+              <View style={styles.upcomingActionCard}>
+                <Text style={styles.upcomingActionText}>
+                  如果你对这项能力感兴趣，或者希望平台优先支持某类活动内容，可以先告诉我们。
+                </Text>
+                <View style={styles.upcomingActionRow}>
+                  <Pressable
+                    onPress={() =>
+                      router.push({
+                        pathname: '/feedback',
+                        params: {
+                          type: 'activity',
+                          contextType: 'activity',
+                          activityKey: activity.key,
+                          activityTitle: activity.title,
+                          activitySummary: activity.summary,
+                          activityStatusLabel: activity.statusLabel,
+                        },
+                      })
+                    }
+                    style={styles.feedbackButton}>
+                    <Text style={styles.feedbackButtonText}>去意见反馈</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => router.replace('/(tabs)/services')}
+                    style={styles.secondaryButton}>
+                    <Text style={styles.secondaryButtonText}>返回 Services</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </>
           ) : (
-            relatedSpots.map((spot) => (
-              <SpotCard
-                key={spot.id}
-                title={spot.name}
-                address={getDisplayAddress(spot)}
-                photoUri={spot.photoUris?.[0]}
-                tags={spot.tags.slice(0, 3)}
-                description={spot.description}
-                onPressTop={() => handleOpenSpot(spot.id)}
-                footer={
-                  <View style={styles.cardFooter}>
-                    <Pressable onPress={() => handleOpenSpot(spot.id)} style={styles.mapButton}>
-                      <Text style={styles.mapButtonText}>去地图看看</Text>
-                    </Pressable>
-                  </View>
-                }
-              />
-            ))
+            <>
+              <View style={styles.feedbackSection}>
+                <Text style={styles.feedbackHintText}>
+                  如果你发现活动专题信息需要补充或调整，可以直接反馈给平台继续整理。
+                </Text>
+                <Pressable
+                  onPress={() =>
+                    router.push({
+                      pathname: '/feedback',
+                      params: {
+                        type: 'activity',
+                        contextType: 'activity',
+                        activityKey: activity.key,
+                        activityTitle: activity.title,
+                        activitySummary: activity.summary,
+                        activityStatusLabel: activity.statusLabel,
+                      },
+                    })
+                  }
+                  style={styles.feedbackButton}>
+                  <Text style={styles.feedbackButtonText}>反馈活动内容</Text>
+                </Pressable>
+              </View>
+
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>相关地点推荐</Text>
+                <TagChip label={`${relatedSpots.length} 个`} compact />
+              </View>
+
+              {relatedSpots.length === 0 ? (
+                <EmptyStateCard
+                  title="暂时没有可展示的关联地点"
+                  description="活动内容已建立，相关地点仍在整理中。"
+                />
+              ) : (
+                relatedSpots.map((spot) => (
+                  <SpotCard
+                    key={spot.id}
+                    title={spot.name}
+                    address={getDisplayAddress(spot)}
+                    photoUri={spot.photoUris?.[0]}
+                    tags={spot.tags.slice(0, 3)}
+                    description={spot.description}
+                    onPressTop={() => handleOpenSpot(spot.id)}
+                    footer={
+                      <View style={styles.cardFooter}>
+                        <Pressable onPress={() => handleOpenSpot(spot.id)} style={styles.mapButton}>
+                          <Text style={styles.mapButtonText}>去地图看看</Text>
+                        </Pressable>
+                      </View>
+                    }
+                  />
+                ))
+              )}
+            </>
           )}
         </ScrollView>
       )}
@@ -194,6 +247,82 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: theme.colors.primary,
+  },
+  upcomingIntroCard: {
+    marginTop: theme.spacing.sm,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.cardBackground,
+    padding: theme.spacing.md,
+    gap: 6,
+    ...theme.shadows.card,
+  },
+  upcomingIntroTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: theme.colors.textPrimary,
+  },
+  upcomingIntroText: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: theme.colors.textSecondary,
+  },
+  upcomingFeatureCard: {
+    marginTop: theme.spacing.sm,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceMuted,
+    padding: theme.spacing.md,
+    gap: theme.spacing.xs,
+  },
+  upcomingSectionTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: theme.colors.textPrimary,
+  },
+  upcomingFeatureList: {
+    gap: 8,
+  },
+  upcomingFeatureItem: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: theme.colors.textSecondary,
+  },
+  upcomingActionCard: {
+    marginTop: theme.spacing.sm,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.cardBackground,
+    padding: theme.spacing.md,
+    gap: theme.spacing.sm,
+    ...theme.shadows.card,
+  },
+  upcomingActionText: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: theme.colors.textSecondary,
+  },
+  upcomingActionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
+  },
+  secondaryButton: {
+    alignSelf: 'flex-start',
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.cardBackground,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  secondaryButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.textPrimary,
   },
   sectionHeaderRow: {
     marginTop: theme.spacing.md,
