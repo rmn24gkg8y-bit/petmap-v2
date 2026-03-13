@@ -4,7 +4,9 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import {
   SPOT_TYPE_LABELS,
 } from '@/constants/spotFormOptions';
+import { getSpotIdentityBadge } from '@/constants/spotIdentity';
 import { theme } from '@/constants/theme';
+import { StatusBadge } from '@/components/ui';
 import type { Spot } from '@/types/spot';
 
 type SpotDetailSheetProps = {
@@ -55,6 +57,7 @@ export function SpotDetailSheet({
   onPickSpotPhoto,
   onRemoveSpotPhoto,
 }: SpotDetailSheetProps) {
+  const identityBadge = getSpotIdentityBadge(selectedSpot);
   const hasCoreMetaInfo =
     Boolean(selectedSpot.petFriendlyLevel) ||
     Boolean(selectedSpot.priceLevel);
@@ -69,24 +72,7 @@ export function SpotDetailSheet({
       <Text style={styles.spotTitle}>{selectedSpot.name}</Text>
       <View style={styles.badgeRow}>
         <Text style={[styles.badge, styles.typeBadge]}>{SPOT_TYPE_LABELS[selectedSpot.spotType]}</Text>
-        <Text
-          style={[
-            styles.badge,
-            selectedSpot.source === 'user' ? styles.userBadge : styles.systemBadge,
-          ]}>
-          {selectedSpot.source === 'user' ? '我添加的' : '系统收录'}
-        </Text>
-        {selectedSpot.source === 'user' ? (
-          <Text
-            style={[
-              styles.badge,
-              selectedSpot.submissionStatus === 'pending_review'
-                ? styles.pendingBadge
-                : styles.localBadge,
-            ]}>
-            {selectedSpot.submissionStatus === 'pending_review' ? '待审核' : '仅本机保存'}
-          </Text>
-        ) : null}
+        <StatusBadge label={identityBadge.label} variant={identityBadge.variant} />
         {selectedSpot.verified ? <Text style={[styles.badge, styles.verifiedBadge]}>已认证</Text> : null}
       </View>
       <View style={styles.addressBlock}>
@@ -261,27 +247,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
-  userBadge: {
-    backgroundColor: theme.colors.primarySoft,
-    color: theme.colors.primary,
-  },
-  systemBadge: {
-    backgroundColor: theme.colors.surfaceMuted,
-    color: theme.colors.textSecondary,
-  },
   typeBadge: {
     backgroundColor: theme.colors.chipBackground,
     color: theme.colors.textPrimary,
   },
   verifiedBadge: {
-    backgroundColor: '#DCFCE7',
-    color: theme.colors.success,
-  },
-  pendingBadge: {
-    backgroundColor: '#FFEDD5',
-    color: theme.colors.warning,
-  },
-  localBadge: {
     backgroundColor: '#DCFCE7',
     color: theme.colors.success,
   },
