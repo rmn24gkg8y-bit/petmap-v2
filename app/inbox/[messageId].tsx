@@ -88,7 +88,7 @@ function getFeedbackStatusLabel(item: InboxItem) {
 
 export default function InboxDetailScreen() {
   const params = useLocalSearchParams<{ messageId?: string }>();
-  const { inboxItems } = usePetMapStore();
+  const { inboxItems, setSelectedSpot } = usePetMapStore();
   const messageId = Array.isArray(params.messageId) ? params.messageId[0] : params.messageId;
   const item = inboxItems.find((entry) => entry.id === messageId);
 
@@ -111,6 +111,27 @@ export default function InboxDetailScreen() {
     }
 
     router.push(item.target.pathname);
+  }
+
+  function handleOpenFeedbackObject() {
+    if (!item || item.sourceType !== 'feedback') {
+      return;
+    }
+
+    if (item.contextType === 'spot' && item.spotId) {
+      setSelectedSpot(item.spotId);
+      router.push('/(tabs)');
+      return;
+    }
+
+    if (item.contextType === 'activity' && item.activityKey) {
+      router.push({
+        pathname: '/activity/[activityKey]',
+        params: {
+          activityKey: item.activityKey,
+        },
+      });
+    }
   }
 
   return (
@@ -159,6 +180,21 @@ export default function InboxDetailScreen() {
                 <Text style={styles.replyTime}>{formatDetailDate(item.reply.repliedAt)}</Text>
               </View>
               <Text style={styles.replyText}>{item.reply.content}</Text>
+            </View>
+          ) : null}
+
+          {item.sourceType === 'feedback' &&
+          ((item.contextType === 'spot' && item.spotId) ||
+            (item.contextType === 'activity' && item.activityKey)) ? (
+            <View style={styles.objectActionCard}>
+              <Text style={styles.objectActionHint}>
+                你可以回到这条反馈最初对应的对象，继续查看当前内容。
+              </Text>
+              <PrimaryButton
+                label={item.contextType === 'spot' ? '去查看该地点' : '去查看该活动专题'}
+                onPress={handleOpenFeedbackObject}
+                style={styles.actionButton}
+              />
             </View>
           ) : null}
 
@@ -278,6 +314,20 @@ const styles = StyleSheet.create({
   replyText: {
     fontSize: 13,
     lineHeight: 20,
+    color: theme.colors.textSecondary,
+  },
+  objectActionCard: {
+    borderRadius: theme.radii.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.cardBackground,
+    padding: theme.spacing.md,
+    gap: theme.spacing.sm,
+    ...theme.shadows.card,
+  },
+  objectActionHint: {
+    fontSize: 13,
+    lineHeight: 19,
     color: theme.colors.textSecondary,
   },
   actionCard: {
