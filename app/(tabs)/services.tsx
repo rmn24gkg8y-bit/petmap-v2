@@ -4,6 +4,7 @@ import { SymbolView } from 'expo-symbols';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { SectionHeader, TagChip } from '@/components/ui';
+import { ACTIVITY_COLLECTIONS, type ActivityCollection } from '@/constants/activityCollections';
 import { SPOT_TYPE_LABELS } from '@/constants/spotFormOptions';
 import { theme } from '@/constants/theme';
 import { usePetMapStore } from '@/store/petmap-store';
@@ -13,15 +14,6 @@ type ServiceCategory = {
   spotType: SpotType;
   icon: ComponentProps<typeof SymbolView>['name'];
   tint: string;
-};
-
-type ActivityItem = {
-  key: string;
-  title: string;
-  summary: string;
-  statusLabel: string;
-  ctaLabel: string;
-  spotId?: string;
 };
 
 const SERVICE_CATEGORIES: ServiceCategory[] = [
@@ -57,30 +49,6 @@ const SERVICE_CATEGORIES: ServiceCategory[] = [
   },
 ];
 
-const ACTIVITY_SEED: Omit<ActivityItem, 'spotId'>[] = [
-  {
-    key: 'weekend-walk',
-    title: '周末宠物散步集合',
-    summary: '适合带宠物轻松出门的线下小活动，先从热门地点开始。',
-    statusLabel: '本周活动',
-    ctaLabel: '去地图看看',
-  },
-  {
-    key: 'pet-friendly-pick',
-    title: '本周宠物友好精选',
-    summary: '平台正在整理适合带宠物停留和打卡的地点内容。',
-    statusLabel: '平台活动',
-    ctaLabel: '查看地点',
-  },
-  {
-    key: 'merchant-event',
-    title: '商家活动报名',
-    summary: '后续会支持品牌和商家发布活动内容，当前先开放前台预览。',
-    statusLabel: '即将支持',
-    ctaLabel: '即将支持报名',
-  },
-];
-
 function getDisplayAddress(spot: Spot) {
   return (
     spot.formattedAddress?.trim() ||
@@ -113,14 +81,6 @@ export default function ServicesScreen() {
     () => [...spots].sort((a, b) => b.votes - a.votes).slice(0, 2),
     [spots]
   );
-  const featuredActivities = useMemo<ActivityItem[]>(
-    () =>
-      ACTIVITY_SEED.map((activity, index) => ({
-        ...activity,
-        spotId: recommendedSpots[index]?.id,
-      })),
-    [recommendedSpots]
-  );
 
   function handleOpenExploreByType(spotType: SpotType) {
     resetExploreFilters();
@@ -133,9 +93,9 @@ export default function ServicesScreen() {
     router.navigate('/(tabs)');
   }
 
-  function handleOpenActivity(activity: ActivityItem) {
-    if (activity.spotId) {
-      handleOpenSpotOnMap(activity.spotId);
+  function handleOpenActivity(activity: ActivityCollection) {
+    if (activity.interactionMode === 'collection') {
+      router.push(`/activity/${activity.key}`);
       return;
     }
 
@@ -217,12 +177,12 @@ export default function ServicesScreen() {
             <Text style={styles.sectionTitle}>本周活动</Text>
             <Text style={styles.sectionDescription}>平台当前整理中的宠物活动与后续商家活动入口。</Text>
           </View>
-          <TagChip label={`${featuredActivities.length} 条`} compact />
+          <TagChip label={`${ACTIVITY_COLLECTIONS.length} 条`} compact />
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalList}>
-          {featuredActivities.map((activity) => {
+          {ACTIVITY_COLLECTIONS.map((activity) => {
             const linkedSpotName =
-              activity.spotId ? spots.find((spot) => spot.id === activity.spotId)?.name ?? '' : '';
+              activity.spotIds[0] ? spots.find((spot) => spot.id === activity.spotIds[0])?.name ?? '' : '';
 
             return (
               <Pressable
