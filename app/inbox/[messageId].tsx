@@ -70,6 +70,22 @@ function getContextLabel(item: InboxItem) {
   return '反馈对象：通用反馈';
 }
 
+function getFeedbackStatusLabel(item: InboxItem) {
+  if (item.sourceType !== 'feedback') {
+    return '';
+  }
+
+  if (item.status === 'in_progress') {
+    return '正在整理';
+  }
+
+  if (item.status === 'replied') {
+    return '已回复';
+  }
+
+  return '已收到';
+}
+
 export default function InboxDetailScreen() {
   const params = useLocalSearchParams<{ messageId?: string }>();
   const { inboxItems } = usePetMapStore();
@@ -126,7 +142,7 @@ export default function InboxDetailScreen() {
             {item.sourceType === 'feedback' ? (
               <View style={styles.feedbackMetaRow}>
                 <Text style={styles.contextText}>{getContextLabel(item)}</Text>
-                <Text style={styles.statusText}>状态：已收到</Text>
+                <Text style={styles.statusText}>状态：{getFeedbackStatusLabel(item)}</Text>
               </View>
             ) : null}
           </View>
@@ -135,6 +151,16 @@ export default function InboxDetailScreen() {
             <Text style={styles.contentTitle}>完整内容</Text>
             <Text style={styles.contentText}>{item.content}</Text>
           </View>
+
+          {item.sourceType === 'feedback' && item.reply ? (
+            <View style={styles.replyCard}>
+              <View style={styles.replyTopRow}>
+                <Text style={styles.replyTitle}>平台回复</Text>
+                <Text style={styles.replyTime}>{formatDetailDate(item.reply.repliedAt)}</Text>
+              </View>
+              <Text style={styles.replyText}>{item.reply.content}</Text>
+            </View>
+          ) : null}
 
           {item.sourceType === 'platform' && item.target ? (
             <View style={styles.actionCard}>
@@ -223,6 +249,35 @@ const styles = StyleSheet.create({
   contentText: {
     fontSize: 14,
     lineHeight: 22,
+    color: theme.colors.textSecondary,
+  },
+  replyCard: {
+    borderRadius: theme.radii.lg,
+    borderWidth: 1,
+    borderColor: '#D7E5FF',
+    backgroundColor: theme.colors.primarySoft,
+    padding: theme.spacing.md,
+    gap: theme.spacing.xs,
+    ...theme.shadows.card,
+  },
+  replyTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing.xs,
+  },
+  replyTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: theme.colors.textPrimary,
+  },
+  replyTime: {
+    fontSize: 12,
+    color: theme.colors.textTertiary,
+  },
+  replyText: {
+    fontSize: 13,
+    lineHeight: 20,
     color: theme.colors.textSecondary,
   },
   actionCard: {

@@ -181,6 +181,21 @@ function parseFeedbackRecord(value: unknown): FeedbackRecord | null {
   }
 
   const record = value as Record<string, unknown>;
+  const status =
+    record.status === 'received' || record.status === 'in_progress' || record.status === 'replied'
+      ? record.status
+      : 'received';
+  const replyValue = record.reply;
+  const reply =
+    replyValue &&
+    typeof replyValue === 'object' &&
+    typeof (replyValue as Record<string, unknown>).content === 'string' &&
+    typeof (replyValue as Record<string, unknown>).repliedAt === 'string'
+      ? {
+          content: (replyValue as Record<string, unknown>).content as string,
+          repliedAt: (replyValue as Record<string, unknown>).repliedAt as string,
+        }
+      : undefined;
 
   if (
     record.sourceType !== 'feedback' ||
@@ -192,7 +207,6 @@ function parseFeedbackRecord(value: unknown): FeedbackRecord | null {
     typeof record.title !== 'string' ||
     typeof record.content !== 'string' ||
     typeof record.createdAt !== 'string' ||
-    record.status !== 'received' ||
     (record.contextType !== 'spot' &&
       record.contextType !== 'activity' &&
       record.contextType !== 'none')
@@ -207,7 +221,8 @@ function parseFeedbackRecord(value: unknown): FeedbackRecord | null {
     title: record.title,
     content: record.content,
     createdAt: record.createdAt,
-    status: 'received',
+    status,
+    reply,
     contextType: record.contextType,
     spotId: typeof record.spotId === 'string' ? record.spotId : undefined,
     spotName: typeof record.spotName === 'string' ? record.spotName : undefined,
