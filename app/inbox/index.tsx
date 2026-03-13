@@ -1,6 +1,6 @@
-import { Stack } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { EmptyStateCard, SectionHeader, TagChip } from '@/components/ui';
 import { theme } from '@/constants/theme';
@@ -126,7 +126,10 @@ export default function InboxScreen() {
           />
         ) : (
           filteredItems.map((item) => (
-            <View key={item.id} style={styles.messageCard}>
+            <Pressable
+              key={item.id}
+              onPress={() => router.push(`/inbox/${item.id}`)}
+              style={({ pressed }) => [styles.messageCard, pressed ? styles.messageCardPressed : null]}>
               <View style={styles.messageTopRow}>
                 <TagChip label={getInboxChipLabel(item)} compact />
                 <Text style={styles.messageTime}>{formatInboxDate(item.createdAt)}</Text>
@@ -141,7 +144,7 @@ export default function InboxScreen() {
                   <Text style={styles.messageStatus}>已收到</Text>
                 </View>
               ) : null}
-            </View>
+            </Pressable>
           ))
         )}
       </ScrollView>
@@ -200,6 +203,9 @@ const styles = StyleSheet.create({
     padding: theme.spacing.md,
     gap: theme.spacing.xs,
     ...theme.shadows.card,
+  },
+  messageCardPressed: {
+    opacity: 0.9,
   },
   messageTopRow: {
     flexDirection: 'row',
