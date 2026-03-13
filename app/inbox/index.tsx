@@ -7,7 +7,7 @@ import { theme } from '@/constants/theme';
 import { usePetMapStore } from '@/store/petmap-store';
 import type { InboxItem } from '@/types/inbox';
 
-type InboxFilterKey = 'all' | 'feedback' | 'platform';
+type InboxFilterKey = 'all' | 'unread' | 'feedback' | 'platform';
 
 function formatInboxDate(value: string) {
   const date = new Date(value);
@@ -67,15 +67,33 @@ function getInboxContextText(item: InboxItem) {
 }
 
 export default function InboxScreen() {
-  const { inboxItems, feedbackRecords, isInboxItemRead } = usePetMapStore();
+  const {
+    inboxItems,
+    feedbackRecords,
+    hasUnreadInboxItems,
+    isInboxItemRead,
+    markAllInboxItemsAsRead,
+  } = usePetMapStore();
   const [selectedFilter, setSelectedFilter] = useState<InboxFilterKey>('all');
+  const unreadCount = useMemo(
+    () => inboxItems.filter((item) => !isInboxItemRead(item.id)).length,
+    [inboxItems, isInboxItemRead]
+  );
+  const platformMessageCount = useMemo(
+    () => inboxItems.filter((item) => item.sourceType === 'platform').length,
+    [inboxItems]
+  );
   const filteredItems = useMemo(() => {
     if (selectedFilter === 'all') {
       return inboxItems;
     }
 
+    if (selectedFilter === 'unread') {
+      return inboxItems.filter((item) => !isInboxItemRead(item.id));
+    }
+
     return inboxItems.filter((item) => item.sourceType === selectedFilter);
-  }, [inboxItems, selectedFilter]);
+  }, [inboxItems, isInboxItemRead, selectedFilter]);
 
   return (
     <View style={styles.container}>
@@ -95,6 +113,11 @@ export default function InboxScreen() {
             onPress={() => setSelectedFilter('all')}
           />
           <TagChip
+            label="未读"
+            active={selectedFilter === 'unread'}
+            onPress={() => setSelectedFilter('unread')}
+          />
+          <TagChip
             label="反馈记录"
             active={selectedFilter === 'feedback'}
             onPress={() => setSelectedFilter('feedback')}
@@ -106,17 +129,28 @@ export default function InboxScreen() {
           />
         </View>
 
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryValue}>{feedbackRecords.length}</Text>
-            <Text style={styles.summaryLabel}>我的反馈</Text>
+        <View style={styles.summaryHeader}>
+          <View style={styles.summaryCard}>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryValue}>{inboxItems.length}</Text>
+              <Text style={styles.summaryLabel}>总消息数</Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryValue}>{unreadCount}</Text>
+              <Text style={styles.summaryLabel}>未读消息</Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryValue}>{platformMessageCount}</Text>
+              <Text style={styles.summaryLabel}>平台消息</Text>
+            </View>
           </View>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryValue}>
-              {inboxItems.filter((item) => item.sourceType === 'platform').length}
-            </Text>
-            <Text style={styles.summaryLabel}>平台消息</Text>
-          </View>
+          {hasUnreadInboxItems ? (
+            <Pressable
+              onPress={markAllInboxItemsAsRead}
+              style={({ pressed }) => [styles.markAllReadButton, pressed ? styles.markAllReadPressed : null]}>
+              <Text style={styles.markAllReadText}>全部已读</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         {filteredItems.length === 0 ? (
@@ -183,6 +217,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: theme.spacing.xs,
   },
+  summaryHeader: {
+    gap: theme.spacing.sm,
+  },
   summaryCard: {
     flexDirection: 'row',
     gap: theme.spacing.xs,
@@ -207,6 +244,23 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 12,
     color: theme.colors.textSecondary,
+  },
+  markAllReadButton: {
+    alignSelf: 'flex-end',
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.cardBackground,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  markAllReadPressed: {
+    opacity: 0.86,
+  },
+  markAllReadText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.primary,
   },
   messageCard: {
     borderRadius: theme.radii.lg,
