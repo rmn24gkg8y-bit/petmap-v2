@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { ACTIVITY_COLLECTIONS } from '@/constants/activityCollections';
 import {
   SPOT_TYPE_LABELS,
 } from '@/constants/spotFormOptions';
@@ -60,6 +61,9 @@ export function SpotDetailSheet({
 }: SpotDetailSheetProps) {
   const identityBadge = getSpotIdentityBadge(selectedSpot);
   const shouldShowPlatformMaintenanceHint = identityBadge.variant === 'system';
+  const relatedActivities = ACTIVITY_COLLECTIONS.filter((activity) =>
+    activity.spotIds.includes(selectedSpot.id)
+  ).slice(0, 3);
   const hasCoreMetaInfo =
     Boolean(selectedSpot.petFriendlyLevel) ||
     Boolean(selectedSpot.priceLevel);
@@ -200,6 +204,35 @@ export function SpotDetailSheet({
               style={styles.platformFeedbackButton}>
               <Text style={styles.platformFeedbackButtonText}>反馈地点信息</Text>
             </Pressable>
+          </View>
+        </View>
+      ) : null}
+      {relatedActivities.length > 0 ? (
+        <View style={styles.relatedActivitiesSection}>
+          <View style={styles.relatedActivitiesHeader}>
+            <Text style={styles.relatedActivitiesTitle}>相关活动 / 专题</Text>
+            <Text style={styles.relatedActivitiesCount}>{relatedActivities.length} 条</Text>
+          </View>
+          <View style={styles.relatedActivitiesList}>
+            {relatedActivities.map((activity) => (
+              <Pressable
+                key={activity.key}
+                onPress={() => router.push(`/activity/${activity.key}`)}
+                style={styles.relatedActivityCard}>
+                <View style={styles.relatedActivityTopRow}>
+                  <StatusBadge
+                    label={activity.statusLabel}
+                    variant={activity.interactionMode === 'upcoming' ? 'pending' : 'system'}
+                  />
+                </View>
+                <Text style={styles.relatedActivityTitle} numberOfLines={1}>
+                  {activity.title}
+                </Text>
+                <Text style={styles.relatedActivitySummary} numberOfLines={2}>
+                  {activity.summary}
+                </Text>
+              </Pressable>
+            ))}
           </View>
         </View>
       ) : null}
@@ -379,6 +412,53 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: theme.colors.primary,
+  },
+  relatedActivitiesSection: {
+    marginTop: 12,
+    gap: 8,
+  },
+  relatedActivitiesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing.xs,
+  },
+  relatedActivitiesTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: theme.colors.textPrimary,
+  },
+  relatedActivitiesCount: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+  },
+  relatedActivitiesList: {
+    gap: 8,
+  },
+  relatedActivityCard: {
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceMuted,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  relatedActivityTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  relatedActivityTitle: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: '800',
+    color: theme.colors.textPrimary,
+  },
+  relatedActivitySummary: {
+    marginTop: 4,
+    fontSize: 12,
+    lineHeight: 17,
+    color: theme.colors.textSecondary,
   },
   spotMetaText: {
     fontSize: 12,
