@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
@@ -58,6 +59,7 @@ export function SpotDetailSheet({
   onRemoveSpotPhoto,
 }: SpotDetailSheetProps) {
   const identityBadge = getSpotIdentityBadge(selectedSpot);
+  const shouldShowPlatformMaintenanceHint = identityBadge.variant === 'system';
   const hasCoreMetaInfo =
     Boolean(selectedSpot.petFriendlyLevel) ||
     Boolean(selectedSpot.priceLevel);
@@ -169,6 +171,19 @@ export function SpotDetailSheet({
             <Text style={styles.metaItem}>营业时间：{selectedSpot.businessHours}</Text>
           ) : null}
           {selectedSpot.contact ? <Text style={styles.metaItem}>联系方式：{selectedSpot.contact}</Text> : null}
+        </View>
+      ) : null}
+      {shouldShowPlatformMaintenanceHint ? (
+        <View style={styles.platformHintSection}>
+          <Text style={styles.platformHintText}>该地点由平台整理维护，后续将支持商家认领与信息更新。</Text>
+          <View style={styles.platformHintActions}>
+            <Text style={styles.platformComingSoonChip}>商家认领（即将支持）</Text>
+            <Pressable
+              onPress={() => router.push('/feedback')}
+              style={styles.platformFeedbackButton}>
+              <Text style={styles.platformFeedbackButtonText}>反馈地点信息</Text>
+            </Pressable>
+          </View>
         </View>
       ) : null}
       <Text style={styles.cardDescription}>
@@ -288,6 +303,50 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     color: theme.colors.textSecondary,
+  },
+  platformHintSection: {
+    marginTop: 10,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceMuted,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    gap: 8,
+  },
+  platformHintText: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: theme.colors.textSecondary,
+  },
+  platformHintActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
+  },
+  platformComingSoonChip: {
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.cardBackground,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    fontWeight: '600',
+  },
+  platformFeedbackButton: {
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    borderColor: '#D7E5FF',
+    backgroundColor: theme.colors.primarySoft,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  platformFeedbackButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.primary,
   },
   spotMetaText: {
     fontSize: 12,
