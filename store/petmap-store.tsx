@@ -28,12 +28,39 @@ import {
   saveRecentViewedIds,
   saveUserCreatedSpots,
 } from '@/repo/storageRepo';
-import type { FeedbackRecord, InboxItem } from '@/types/inbox';
+import type { FeedbackRecord, FeedbackStatus, InboxItem } from '@/types/inbox';
 import type { Spot } from '@/types/spot';
 import { getDistanceMeters } from '@/utils/distance';
 
 type SortMode = 'popular' | 'name' | 'distance';
 type UserLoc = { lat: number; lng: number } | null;
+
+function buildInitialFeedbackLifecycle(feedbackType: FeedbackRecord['feedbackType']): Pick<
+  FeedbackRecord,
+  'status' | 'reply'
+> {
+  const now = new Date().toISOString();
+
+  if (feedbackType === 'bug') {
+    return {
+      status: 'in_progress',
+    };
+  }
+
+  if (feedbackType === 'product') {
+    return {
+      status: 'replied',
+      reply: {
+        content: '这条建议已经收到，我们会结合 PetMap 当前阶段继续评估，后续会优先吸收适合前台主流程的改进方向。',
+        repliedAt: now,
+      },
+    };
+  }
+
+  return {
+    status: 'received',
+  };
+}
 
 type PetMapStoreValue = {
   hasHydratedStorage: boolean;
@@ -84,7 +111,9 @@ type PetMapStoreValue = {
   resetExploreFilters: () => void;
   setUserLoc: (loc: UserLoc) => void;
   isFavorite: (id: string) => boolean;
-  addFeedbackRecord: (record: Omit<FeedbackRecord, 'id' | 'sourceType' | 'createdAt' | 'status'>) => void;
+  addFeedbackRecord: (
+    record: Omit<FeedbackRecord, 'id' | 'sourceType' | 'createdAt' | 'status' | 'reply'>
+  ) => void;
 };
 
 const PetMapContext = createContext<PetMapStoreValue | undefined>(undefined);
@@ -515,8 +544,11 @@ export function PetMapProvider({ children }: PropsWithChildren) {
       setUserLoc,
       isFavorite,
       addFeedbackRecord: (
-        record: Omit<FeedbackRecord, 'id' | 'sourceType' | 'createdAt' | 'status'>
+        record: Omit<FeedbackRecord, 'id' | 'sourceType' | 'createdAt' | 'status' | 'reply'>
       ) => {
+        const createdAt = new Date().toISOString();
+        const lifecycle = buildInitialFeedbackLifecycle(record.feedbackType);
+
         setFeedbackRecords((current) => [
           {
             id: `feedback-${Date.now()}`,
@@ -524,8 +556,9 @@ export function PetMapProvider({ children }: PropsWithChildren) {
             feedbackType: record.feedbackType,
             title: record.title,
             content: record.content,
-            createdAt: new Date().toISOString(),
-            status: 'received',
+            createdAt,
+            status: lifecycle.status,
+            reply: lifecycle.reply,
             contextType: record.contextType,
             spotId: record.spotId,
             spotName: record.spotName,

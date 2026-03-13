@@ -1,7 +1,7 @@
 export type FeedbackType = 'spot' | 'activity' | 'product' | 'bug';
 export type InboxSourceType = 'feedback' | 'platform';
 export type InboxContextType = 'spot' | 'activity' | 'none';
-export type FeedbackStatus = 'received';
+export type FeedbackStatus = 'received' | 'in_progress' | 'replied';
 export type PlatformMessageType = 'activity' | 'release' | 'reminder';
 export type PlatformMessageTarget = {
   pathname:
@@ -15,6 +15,10 @@ export type PlatformMessageTarget = {
   };
   ctaLabel: string;
 };
+export type FeedbackReply = {
+  content: string;
+  repliedAt: string;
+};
 
 export type FeedbackRecord = {
   id: string;
@@ -24,6 +28,7 @@ export type FeedbackRecord = {
   content: string;
   createdAt: string;
   status: FeedbackStatus;
+  reply?: FeedbackReply;
   contextType: InboxContextType;
   spotId?: string;
   spotName?: string;
