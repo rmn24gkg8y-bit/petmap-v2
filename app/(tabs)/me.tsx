@@ -16,7 +16,7 @@ type MeActionItem = {
 type MySpotsStatusFilter = 'all' | 'other' | 'pending' | 'published';
 
 export default function MeScreen() {
-  const { favoriteSpots, inboxItems, userSpots } = usePetMapStore();
+  const { favoriteSpots, hasUnreadInboxItems, userSpots } = usePetMapStore();
   const pendingSpotsCount = userSpots.filter((spot) => spot.submissionStatus === 'pending_review').length;
   const publishedSpotsCount = userSpots.filter((spot) => spot.verified).length;
   const draftSpotsCount = userSpots.filter(
@@ -93,7 +93,7 @@ export default function MeScreen() {
                 tintColor={theme.colors.textPrimary}
                 size={18}
               />
-              {inboxItems.length > 0 ? <View style={styles.inboxDot} /> : null}
+              {hasUnreadInboxItems ? <View style={styles.inboxDot} /> : null}
             </Pressable>
           ),
         }}

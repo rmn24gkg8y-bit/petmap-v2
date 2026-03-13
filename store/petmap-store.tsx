@@ -20,15 +20,17 @@ import {
   loadFormattedAddressBySpotId,
   loadFeedbackRecords,
   loadFavoriteIds,
+  loadInboxReadAtByMessageId,
   loadRecentViewedIds,
   loadUserCreatedSpots,
   saveFormattedAddressBySpotId,
   saveFeedbackRecords,
   saveFavoriteIds,
+  saveInboxReadAtByMessageId,
   saveRecentViewedIds,
   saveUserCreatedSpots,
 } from '@/repo/storageRepo';
-import type { FeedbackRecord, FeedbackStatus, InboxItem } from '@/types/inbox';
+import type { FeedbackRecord, InboxItem } from '@/types/inbox';
 import type { Spot } from '@/types/spot';
 import { getDistanceMeters } from '@/utils/distance';
 
@@ -86,6 +88,7 @@ type PetMapStoreValue = {
   favoriteCount: number;
   feedbackRecords: FeedbackRecord[];
   inboxItems: InboxItem[];
+  hasUnreadInboxItems: boolean;
   addSpot: (spot: Spot) => void;
   updateSpot: (spot: Spot) => void;
   removeSpot: (id: string) => void;
@@ -111,6 +114,8 @@ type PetMapStoreValue = {
   resetExploreFilters: () => void;
   setUserLoc: (loc: UserLoc) => void;
   isFavorite: (id: string) => boolean;
+  isInboxItemRead: (id: string) => boolean;
+  markInboxItemAsRead: (id: string) => void;
   addFeedbackRecord: (
     record: Omit<FeedbackRecord, 'id' | 'sourceType' | 'createdAt' | 'status' | 'reply'>
   ) => void;
@@ -127,6 +132,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
     {}
   );
   const [feedbackRecords, setFeedbackRecords] = useState<FeedbackRecord[]>([]);
+  const [inboxReadAtByMessageId, setInboxReadAtByMessageId] = useState<Record<string, string>>({});
   const [selectedSpotId, setSelectedSpotId] = useState<string | null>(null);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [recentViewedIds, setRecentViewedIds] = useState<string[]>([]);
@@ -183,12 +189,14 @@ export function PetMapProvider({ children }: PropsWithChildren) {
         storedUserCreatedSpots,
         storedFormattedAddressBySpotId,
         storedFeedbackRecords,
+        storedInboxReadAtByMessageId,
       ] = await Promise.all([
         loadFavoriteIds(),
         loadRecentViewedIds(),
         loadUserCreatedSpots(),
         loadFormattedAddressBySpotId(),
         loadFeedbackRecords(),
+        loadInboxReadAtByMessageId(),
       ]);
 
       if (!isMounted) {
@@ -216,6 +224,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
         ...current,
       }));
       setFeedbackRecords(storedFeedbackRecords);
+      setInboxReadAtByMessageId(storedInboxReadAtByMessageId);
       setHasHydratedStorage(true);
     }
 
@@ -271,6 +280,14 @@ export function PetMapProvider({ children }: PropsWithChildren) {
 
     saveFeedbackRecords(feedbackRecords);
   }, [feedbackRecords, hasHydratedStorage]);
+
+  useEffect(() => {
+    if (!hasHydratedStorage) {
+      return;
+    }
+
+    saveInboxReadAtByMessageId(inboxReadAtByMessageId);
+  }, [hasHydratedStorage, inboxReadAtByMessageId]);
 
   const value = useMemo(() => {
     const systemSpotHitCount = systemSpots.filter(
@@ -358,6 +375,8 @@ export function PetMapProvider({ children }: PropsWithChildren) {
     const inboxItems = [...feedbackRecords, ...PLATFORM_INBOX_MESSAGES].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
+    const isInboxItemRead = (id: string) => typeof inboxReadAtByMessageId[id] === 'string';
+    const hasUnreadInboxItems = inboxItems.some((item) => !isInboxItemRead(item.id));
 
     return {
       hasHydratedStorage,
@@ -383,6 +402,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
       favoriteCount: favoriteIds.length,
       feedbackRecords,
       inboxItems,
+      hasUnreadInboxItems,
       addSpot: (spot: Spot) => {
         setUserCreatedSpots((current) => [...current, spot]);
       },
@@ -543,6 +563,19 @@ export function PetMapProvider({ children }: PropsWithChildren) {
       },
       setUserLoc,
       isFavorite,
+      isInboxItemRead,
+      markInboxItemAsRead: (id: string) => {
+        setInboxReadAtByMessageId((current) => {
+          if (current[id]) {
+            return current;
+          }
+
+          return {
+            ...current,
+            [id]: new Date().toISOString(),
+          };
+        });
+      },
       addFeedbackRecord: (
         record: Omit<FeedbackRecord, 'id' | 'sourceType' | 'createdAt' | 'status' | 'reply'>
       ) => {
@@ -582,6 +615,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
     showUserOnly,
     sortMode,
     feedbackRecords,
+    inboxReadAtByMessageId,
     formattedAddressBySpotId,
     systemSpots,
     userLoc,
