@@ -1,6 +1,15 @@
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { type ComponentProps, useMemo, useState } from 'react';
+import {
+  FlatList,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
 import {
   SPOT_TYPE_LABELS,
@@ -11,7 +20,6 @@ import {
   EmptyStateCard,
   PrimaryButton,
   SectionHeader,
-  SpotCard,
   StatusBadge,
   TagChip,
 } from '@/components/ui';
@@ -19,21 +27,25 @@ import { theme } from '@/constants/theme';
 import { usePetMapStore } from '@/store/petmap-store';
 import { formatDistance, getDistanceMeters } from '@/utils/distance';
 
-const SORT_MODE_LABELS = {
-  popular: '热门推荐',
-  name: '名称排序',
-  distance: '距离优先',
-} as const;
-
 const PET_FRIENDLY_LABELS = {
   high: '宠物友好高',
   medium: '宠物友好中',
   low: '宠物友好待确认',
 } as const;
 
-function getExploreStatusBadge(
-  spot: ReturnType<typeof usePetMapStore>['filteredSpots'][number]
-) {
+const SORT_OPTIONS = [
+  { label: '热门', value: 'popular' as const },
+  { label: '名称', value: 'name' as const },
+  { label: '距离', value: 'distance' as const },
+];
+
+type ExploreSpot = ReturnType<typeof usePetMapStore>['filteredSpots'][number];
+type ExploreBadge = {
+  label: string;
+  variant: ComponentProps<typeof StatusBadge>['variant'];
+};
+
+function getExploreStatusBadge(spot: ExploreSpot) {
   if (spot.submissionStatus === 'pending_review') {
     return { label: '审核中', variant: 'pending' as const };
   }
@@ -49,13 +61,92 @@ function getExploreStatusBadge(
   return null;
 }
 
+function ExploreSpotCard({
+  spot,
+  address,
+  description,
+  badges,
+  tags,
+  distanceText,
+  heatText,
+  onPress,
+}: {
+  spot: ExploreSpot;
+  address: string;
+  description?: string;
+  badges: ExploreBadge[];
+  tags: string[];
+  distanceText: string;
+  heatText: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} style={styles.spotCard}>
+      <View style={styles.spotCardTop}>
+        {spot.photoUris?.[0] ? (
+          <Image source={{ uri: spot.photoUris[0] }} style={styles.spotImage} />
+        ) : (
+          <View style={styles.spotImagePlaceholder}>
+            <Text style={styles.spotImagePlaceholderText}>暂无图片</Text>
+          </View>
+        )}
+
+        <View style={styles.spotMeta}>
+          <View style={styles.spotHeaderRow}>
+            <Text style={styles.spotTitle} numberOfLines={1}>
+              {spot.name}
+            </Text>
+            <View style={styles.metaPill}>
+              <Text style={styles.metaPillText}>{distanceText}</Text>
+            </View>
+          </View>
+
+          <Text style={styles.spotAddress} numberOfLines={1}>
+            {address}
+          </Text>
+
+          <View style={styles.metaRow}>
+            <Text style={styles.metaText}>{heatText}</Text>
+            {spot.petFriendlyLevel ? (
+              <Text style={styles.metaText}>{PET_FRIENDLY_LABELS[spot.petFriendlyLevel]}</Text>
+            ) : null}
+          </View>
+
+          {description ? (
+            <Text style={styles.spotDescription} numberOfLines={1}>
+              {description}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+
+      <View style={styles.spotFooter}>
+        {badges.length > 0 ? (
+          <View style={styles.badgeRow}>
+            {badges.map((badge) => (
+              <StatusBadge key={`${spot.id}-${badge.label}`} label={badge.label} variant={badge.variant} />
+            ))}
+          </View>
+        ) : null}
+
+        {tags.length > 0 ? (
+          <View style={styles.tagsRow}>
+            {tags.map((tag) => (
+              <TagChip key={`${spot.id}-${tag}`} label={tag} compact />
+            ))}
+          </View>
+        ) : null}
+      </View>
+    </Pressable>
+  );
+}
+
 type ExploreListItem =
   | { type: 'sticky'; key: 'sticky' }
-  | { type: 'aux'; key: 'aux' }
   | {
       type: 'spot';
       key: string;
-      spot: ReturnType<typeof usePetMapStore>['filteredSpots'][number];
+      spot: ExploreSpot;
     };
 
 export default function ExploreScreen() {
@@ -81,12 +172,11 @@ export default function ExploreScreen() {
     isFavorite,
     recentViewedSpots,
   } = usePetMapStore();
-  const [isTagExpanded, setIsTagExpanded] = useState(false);
+  const [openMenu, setOpenMenu] = useState<'sort' | 'type' | null>(null);
 
   const listData = useMemo<ExploreListItem[]>(
     () => [
       { type: 'sticky', key: 'sticky' },
-      { type: 'aux', key: 'aux' },
       ...filteredSpots.map((spot) => ({
         type: 'spot' as const,
         key: spot.id,
@@ -95,18 +185,13 @@ export default function ExploreScreen() {
     ],
     [filteredSpots]
   );
-  const selectedSpotTypeLabel = selectedSpotType ? SPOT_TYPE_LABELS[selectedSpotType] : '全部类型';
-  const selectedTagsLabel = selectedTags.length === 0 ? '全部标签' : selectedTags.join(' + ');
-  const hasActiveFilters =
-    searchQuery.trim().length > 0 ||
-    selectedTags.length > 0 ||
-    selectedSpotType !== null ||
-    showFavoritesOnly ||
-    showUserOnly ||
-    sortMode !== 'popular';
+
+  const selectedSortLabel = SORT_OPTIONS.find((option) => option.value === sortMode)?.label ?? '热门';
+  const selectedTypeLabel = selectedSpotType ? SPOT_TYPE_LABELS[selectedSpotType] : '全部';
 
   function handleSelectSpot(id: string) {
     setSelectedSpot(id);
+    setOpenMenu(null);
     router.navigate('/(tabs)');
   }
 
@@ -116,6 +201,7 @@ export default function ExploreScreen() {
         data={listData}
         keyExtractor={(item) => item.key}
         stickyHeaderIndices={[1]}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.content}
         ListHeaderComponent={
           <View style={styles.header}>
@@ -127,6 +213,7 @@ export default function ExploreScreen() {
                 onChangeText={setSearchQuery}
                 placeholder="搜索地点、区域或标签"
                 style={styles.searchInput}
+                onFocus={() => setOpenMenu(null)}
               />
               {searchQuery ? (
                 <Pressable onPress={() => setSearchQuery('')} style={styles.clearSearchButton}>
@@ -150,135 +237,47 @@ export default function ExploreScreen() {
           if (item.type === 'sticky') {
             return (
               <View style={styles.stickyBar}>
-                <View style={styles.stickyControls}>
-                  <View style={styles.stickyRow}>
-                    <Text style={styles.stickyLabel}>来源</Text>
-                    <TagChip label="全部" compact active={!showUserOnly} onPress={() => setShowUserOnly(false)} />
-                    <TagChip
-                      label="我添加的"
-                      compact
-                      active={showUserOnly}
-                      onPress={() => setShowUserOnly(true)}
-                    />
-                  </View>
-
-                  <View style={styles.stickyRow}>
-                    <Text style={styles.stickyLabel}>范围</Text>
-                    <TagChip
-                      label="全部"
-                      compact
-                      active={!showFavoritesOnly}
-                      onPress={() => setShowFavoritesOnly(false)}
-                    />
-                    <TagChip
-                      label="已收藏"
-                      compact
-                      active={showFavoritesOnly}
-                      onPress={() => setShowFavoritesOnly(true)}
-                    />
-                  </View>
-
-                  <View style={styles.stickyRow}>
-                    <Text style={styles.stickyLabel}>排序</Text>
-                    <TagChip
-                      label="热门"
-                      compact
-                      active={sortMode === 'popular'}
-                      onPress={() => setSortMode('popular')}
-                    />
-                    <TagChip
-                      label="名称"
-                      compact
-                      active={sortMode === 'name'}
-                      onPress={() => setSortMode('name')}
-                    />
-                    <TagChip
-                      label="距离"
-                      compact
-                      active={sortMode === 'distance'}
-                      onPress={() => setSortMode('distance')}
-                    />
-                  </View>
-                  <View style={styles.stickyRow}>
-                    <Text style={styles.stickyLabel}>类型</Text>
-                    <TagChip
-                      label="全部"
-                      compact
-                      active={selectedSpotType === null}
-                      onPress={() => setSelectedSpotType(null)}
-                    />
-                    {SPOT_TYPE_OPTIONS.map((spotType) => (
+                <View style={styles.toolbarRow}>
+                  <View style={styles.toolbarGroup}>
+                    <Text style={styles.sectionLabel}>来源</Text>
+                    <View style={styles.toolbarOptions}>
+                      <TagChip label="全部" compact active={!showUserOnly} onPress={() => setShowUserOnly(false)} />
                       <TagChip
-                        key={spotType}
-                        label={SPOT_TYPE_LABELS[spotType]}
+                        label="我添加的"
                         compact
-                        active={selectedSpotType === spotType}
-                        onPress={() => setSelectedSpotType(spotType)}
+                        active={showUserOnly}
+                        onPress={() => setShowUserOnly(true)}
                       />
-                    ))}
+                    </View>
+                  </View>
+
+                  <View style={styles.toolbarGroup}>
+                    <Text style={styles.sectionLabel}>范围</Text>
+                    <View style={styles.toolbarOptions}>
+                      <TagChip
+                        label="全部"
+                        compact
+                        active={!showFavoritesOnly}
+                        onPress={() => setShowFavoritesOnly(false)}
+                      />
+                      <TagChip
+                        label="已收藏"
+                        compact
+                        active={showFavoritesOnly}
+                        onPress={() => setShowFavoritesOnly(true)}
+                      />
+                    </View>
                   </View>
                 </View>
 
-                <View style={styles.stickyFooter}>
-                  <Text style={styles.resultSummary}>
-                    {SORT_MODE_LABELS[sortMode]} · {selectedSpotTypeLabel} · {selectedTagsLabel} · {filteredSpots.length} 个结果
-                  </Text>
-                  <View style={styles.stickyFooterActions}>
-                    {hasActiveFilters ? (
-                      <Pressable onPress={resetExploreFilters} style={styles.clearAllButton}>
-                        <Text style={styles.clearAllButtonText}>清空筛选</Text>
-                      </Pressable>
-                    ) : null}
-                    <Pressable
-                      onPress={() => setIsTagExpanded((current) => !current)}
-                      style={styles.moreFilterButton}>
-                      <Text style={styles.moreFilterButtonText}>
-                        {isTagExpanded ? '收起标签' : '更多筛选'}
-                      </Text>
-                    </Pressable>
-                  </View>
-                </View>
-              </View>
-            );
-          }
-
-          if (item.type === 'aux') {
-            return (
-              <View style={styles.auxSection}>
-                {isTagExpanded ? (
-                  <View style={styles.expandedTagSection}>
-                    <Text style={styles.expandedTagTitle}>标签筛选</Text>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.tagContent}>
-                      <Pressable
-                        onPress={clearSelectedTags}>
-                        <TagChip label="全部" active={selectedTags.length === 0} />
-                      </Pressable>
-
-                      {allTags.map((tag) => (
-                        <Pressable
-                          key={tag}
-                          onPress={() => toggleSelectedTag(tag)}>
-                          <TagChip label={tag} active={selectedTags.includes(tag)} />
-                        </Pressable>
-                      ))}
-                    </ScrollView>
-                  </View>
-                ) : null}
-
-                {sortMode === 'distance' && !userLoc ? (
-                  <Text style={styles.helperText}>暂未获取位置，已自动按热门排序</Text>
-                ) : null}
-
-                {recentViewedSpots.length > 0 ? (
-                  <View style={styles.recentSection}>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.recentContent}>
-                      {recentViewedSpots.map((spot) => (
+                <View style={styles.recentSection}>
+                  <Text style={styles.sectionLabel}>最近看过</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.recentContent}>
+                    {recentViewedSpots.length > 0 ? (
+                      recentViewedSpots.map((spot) => (
                         <Pressable
                           key={spot.id}
                           onPress={() => handleSelectSpot(spot.id)}
@@ -287,10 +286,140 @@ export default function ExploreScreen() {
                             {spot.name}
                           </Text>
                         </Pressable>
-                      ))}
-                    </ScrollView>
+                      ))
+                    ) : (
+                      <View style={styles.recentEmptyChip}>
+                        <Text style={styles.recentEmptyText}>还没有最近看过</Text>
+                      </View>
+                    )}
+                  </ScrollView>
+                </View>
+
+                <View style={styles.selectorSection}>
+                  <View style={styles.selectorRow}>
+                    <View style={styles.selectorColumn}>
+                      <Text style={styles.sectionLabel}>排序</Text>
+                      <Pressable
+                        onPress={() => setOpenMenu((current) => (current === 'sort' ? null : 'sort'))}
+                        style={[
+                          styles.selectorButton,
+                          openMenu === 'sort' ? styles.selectorButtonActive : null,
+                        ]}>
+                        <Text style={styles.selectorButtonText}>{selectedSortLabel}</Text>
+                        <Text style={styles.selectorChevron}>{openMenu === 'sort' ? '▲' : '▼'}</Text>
+                      </Pressable>
+                    </View>
+
+                    <View style={styles.selectorColumn}>
+                      <Text style={styles.sectionLabel}>类型</Text>
+                      <Pressable
+                        onPress={() => setOpenMenu((current) => (current === 'type' ? null : 'type'))}
+                        style={[
+                          styles.selectorButton,
+                          openMenu === 'type' ? styles.selectorButtonActive : null,
+                        ]}>
+                        <Text style={styles.selectorButtonText} numberOfLines={1}>
+                          {selectedTypeLabel}
+                        </Text>
+                        <Text style={styles.selectorChevron}>{openMenu === 'type' ? '▲' : '▼'}</Text>
+                      </Pressable>
+                    </View>
                   </View>
-                ) : null}
+
+                  {openMenu === 'sort' ? (
+                    <View style={[styles.dropdownMenu, styles.dropdownMenuLeft]}>
+                      {SORT_OPTIONS.map((option) => (
+                        <Pressable
+                          key={option.value}
+                          onPress={() => {
+                            setSortMode(option.value);
+                            setOpenMenu(null);
+                          }}
+                          style={[
+                            styles.dropdownItem,
+                            sortMode === option.value ? styles.dropdownItemActive : null,
+                          ]}>
+                          <Text
+                            style={[
+                              styles.dropdownItemText,
+                              sortMode === option.value ? styles.dropdownItemTextActive : null,
+                            ]}>
+                            {option.label}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null}
+
+                  {openMenu === 'type' ? (
+                    <View style={[styles.dropdownMenu, styles.dropdownMenuRight]}>
+                      <Pressable
+                        onPress={() => {
+                          setSelectedSpotType(null);
+                          setOpenMenu(null);
+                        }}
+                        style={[
+                          styles.dropdownItem,
+                          selectedSpotType === null ? styles.dropdownItemActive : null,
+                        ]}>
+                        <Text
+                          style={[
+                            styles.dropdownItemText,
+                            selectedSpotType === null ? styles.dropdownItemTextActive : null,
+                          ]}>
+                          全部
+                        </Text>
+                      </Pressable>
+
+                      {SPOT_TYPE_OPTIONS.map((spotType) => (
+                        <Pressable
+                          key={spotType}
+                          onPress={() => {
+                            setSelectedSpotType(spotType);
+                            setOpenMenu(null);
+                          }}
+                          style={[
+                            styles.dropdownItem,
+                            selectedSpotType === spotType ? styles.dropdownItemActive : null,
+                          ]}>
+                          <Text
+                            style={[
+                              styles.dropdownItemText,
+                              selectedSpotType === spotType ? styles.dropdownItemTextActive : null,
+                            ]}>
+                            {SPOT_TYPE_LABELS[spotType]}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+
+                <View style={styles.tagsSection}>
+                  <View style={styles.tagsHeader}>
+                    <Text style={styles.sectionLabel}>标签</Text>
+                    {selectedTags.length > 0 ? (
+                      <Pressable onPress={clearSelectedTags} style={styles.clearAllButton}>
+                        <Text style={styles.clearAllButtonText}>清空</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.filterScrollContent}>
+                    <Pressable onPress={clearSelectedTags}>
+                      <TagChip label="全部" active={selectedTags.length === 0} />
+                    </Pressable>
+
+                    {allTags.map((tag) => (
+                      <Pressable key={tag} onPress={() => toggleSelectedTag(tag)}>
+                        <TagChip label={tag} active={selectedTags.includes(tag)} />
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
               </View>
             );
           }
@@ -302,67 +431,29 @@ export default function ExploreScreen() {
             spot.formattedAddress?.trim() ||
             [spot.district, spot.addressHint].map((value) => value.trim()).filter(Boolean).join(' · ') ||
             '地址待补充';
-          const quickFacts = [
-            spot.petFriendlyLevel ? PET_FRIENDLY_LABELS[spot.petFriendlyLevel] : null,
-            spot.priceLevel ? `价格 ${spot.priceLevel}` : null,
-          ].filter((value): value is string => Boolean(value));
+          const badges = [
+            { label: identityBadge.label, variant: identityBadge.variant },
+            ...(statusBadge ? [statusBadge] : []),
+            ...(isFavorite(spot.id) ? [{ label: '已收藏', variant: 'favorite' as const }] : []),
+          ].filter(
+            (badge, index, source) =>
+              source.findIndex((item) => item.label === badge.label && item.variant === badge.variant) === index
+          ).slice(0, 2);
+          const distanceText = userLoc
+            ? formatDistance(getDistanceMeters(userLoc, { lat: spot.lat, lng: spot.lng }))
+            : '距离未知';
+          const heatText = `${spot.votes} 热度`;
 
           return (
-            <SpotCard
-              title={spot.name}
+            <ExploreSpotCard
+              spot={spot}
               address={displayAddress}
-              photoUri={spot.photoUris?.[0]}
-              badges={
-                <>
-                  <StatusBadge
-                    label={identityBadge.label}
-                    variant={identityBadge.variant}
-                  />
-                  {statusBadge ? (
-                    <StatusBadge
-                      label={statusBadge.label}
-                      variant={statusBadge.variant}
-                    />
-                  ) : null}
-                  {isFavorite(spot.id) ? (
-                    <StatusBadge
-                      label="已收藏"
-                      variant="favorite"
-                    />
-                  ) : null}
-                </>
-              }
-              tags={spot.tags.slice(0, 3)}
-              horizontalTags={spot.tags.length > 2}
-              onPressTop={() => handleSelectSpot(spot.id)}
-              onPressBottom={() => handleSelectSpot(spot.id)}
-              description={spot.description}
-              descriptionLines={2}
-              footer={
-                <View style={styles.cardFooter}>
-                  <View style={styles.quickFactsRow}>
-                    {quickFacts.length > 0 ? (
-                      quickFacts.map((fact) => (
-                        <Text key={fact} style={styles.quickFactChip}>
-                          {fact}
-                        </Text>
-                      ))
-                    ) : (
-                      <Text style={styles.quickFactPlaceholder}>打开详情可查看更多信息</Text>
-                    )}
-                  </View>
-                  <View style={styles.footerMetaRow}>
-                    {userLoc ? (
-                      <Text style={styles.distance}>
-                        距离你约 {formatDistance(getDistanceMeters(userLoc, { lat: spot.lat, lng: spot.lng }))}
-                      </Text>
-                    ) : (
-                      <Text style={styles.distancePlaceholder}>尚未获取位置</Text>
-                    )}
-                    <Text style={styles.votes}>{spot.votes} votes</Text>
-                  </View>
-                </View>
-              }
+              badges={badges}
+              tags={spot.tags.slice(0, 2)}
+              description={spot.description?.trim()}
+              distanceText={distanceText}
+              heatText={heatText}
+              onPress={() => handleSelectSpot(spot.id)}
             />
           );
         }}
@@ -416,100 +507,39 @@ const styles = StyleSheet.create({
     color: theme.colors.textPrimary,
   },
   stickyBar: {
-    marginBottom: theme.spacing.xs,
-    borderRadius: theme.radii.md,
+    marginBottom: theme.spacing.sm,
+    borderRadius: theme.radii.lg,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    backgroundColor: '#FFFFFFF2',
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs + 2,
+    backgroundColor: '#FFFFFFF5',
+    padding: 14,
+    gap: 14,
     ...theme.shadows.card,
   },
-  stickyControls: {
+  toolbarRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  toolbarGroup: {
+    flex: 1,
     gap: 6,
   },
-  stickyRow: {
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.textSecondary,
+  },
+  toolbarOptions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: theme.spacing.xs,
-    alignItems: 'center',
-  },
-  stickyLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.textSecondary,
-    marginRight: 2,
-  },
-  stickyFooter: {
-    marginTop: theme.spacing.xs,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: theme.spacing.xs,
-  },
-  stickyFooterActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.xs,
-  },
-  resultSummary: {
-    flex: 1,
-    fontSize: 12,
-    color: theme.colors.textSecondary,
-  },
-  moreFilterButton: {
-    borderRadius: theme.radii.pill,
-    backgroundColor: theme.colors.chipBackground,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  moreFilterButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: theme.colors.primary,
-  },
-  clearAllButton: {
-    borderRadius: theme.radii.pill,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.cardBackground,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  clearAllButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.textSecondary,
-  },
-  expandedTagSection: {
-    marginTop: 6,
-  },
-  expandedTagTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.textSecondary,
-    marginBottom: 6,
-  },
-  tagContent: {
-    gap: theme.spacing.xs,
-    paddingBottom: 2,
-  },
-  helperText: {
-    marginTop: 6,
-    fontSize: 12,
-    color: theme.colors.textSecondary,
-  },
-  auxSection: {
-    marginBottom: theme.spacing.xs,
-    gap: 6,
   },
   recentSection: {
-    marginTop: 2,
+    gap: 8,
   },
   recentContent: {
     gap: 8,
+    paddingBottom: 2,
   },
   recentItem: {
     maxWidth: 180,
@@ -525,49 +555,206 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: theme.colors.textPrimary,
   },
-  cardFooter: {
-    marginTop: theme.spacing.sm + 2,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.divider,
-    gap: theme.spacing.sm,
+  recentEmptyChip: {
+    borderRadius: theme.radii.pill,
+    backgroundColor: theme.colors.surfaceMuted,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
   },
-  quickFactsRow: {
+  recentEmptyText: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+  },
+  selectorSection: {
+    position: 'relative',
+    gap: 8,
+    zIndex: 10,
+  },
+  selectorRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  selectorColumn: {
+    flex: 1,
+    gap: 6,
+  },
+  selectorButton: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.cardBackground,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  selectorButtonActive: {
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primarySoft,
+  },
+  selectorButtonText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.textPrimary,
+  },
+  selectorChevron: {
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    top: 66,
+    width: '48%',
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.cardBackground,
+    padding: 6,
+    ...theme.shadows.card,
+  },
+  dropdownMenuLeft: {
+    left: 0,
+  },
+  dropdownMenuRight: {
+    right: 0,
+  },
+  dropdownItem: {
+    borderRadius: theme.radii.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  dropdownItemActive: {
+    backgroundColor: theme.colors.primarySoft,
+  },
+  dropdownItemText: {
+    fontSize: 14,
+    color: theme.colors.textPrimary,
+  },
+  dropdownItemTextActive: {
+    fontWeight: '700',
+    color: theme.colors.primary,
+  },
+  tagsSection: {
+    gap: 8,
+  },
+  tagsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  clearAllButton: {
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.cardBackground,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  clearAllButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.textSecondary,
+  },
+  filterScrollContent: {
+    gap: theme.spacing.xs,
+    paddingBottom: 2,
+  },
+  spotCard: {
+    marginBottom: theme.spacing.sm,
+    borderRadius: theme.radii.lg,
+    backgroundColor: theme.colors.cardBackground,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: 14,
+    gap: 10,
+    ...theme.shadows.card,
+  },
+  spotCardTop: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  spotImage: {
+    width: 68,
+    height: 68,
+    borderRadius: 14,
+    backgroundColor: theme.colors.surfaceMuted,
+  },
+  spotImagePlaceholder: {
+    width: 68,
+    height: 68,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  spotImagePlaceholderText: {
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+  },
+  spotMeta: {
+    flex: 1,
+    gap: 4,
+  },
+  spotHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  spotTitle: {
+    flex: 1,
+    fontSize: 17,
+    fontWeight: '800',
+    color: theme.colors.textPrimary,
+  },
+  metaPill: {
+    borderRadius: theme.radii.pill,
+    backgroundColor: theme.colors.surfaceMuted,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  metaPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: theme.colors.textSecondary,
+  },
+  spotAddress: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  metaText: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+  },
+  spotDescription: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: theme.colors.textSecondary,
+  },
+  spotFooter: {
+    gap: 8,
+  },
+  badgeRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: theme.spacing.xs,
   },
-  quickFactChip: {
-    borderRadius: theme.radii.pill,
-    backgroundColor: theme.colors.surfaceMuted,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    fontSize: 12,
-    color: theme.colors.textSecondary,
-  },
-  quickFactPlaceholder: {
-    fontSize: 12,
-    color: theme.colors.textSecondary,
-  },
-  footerMetaRow: {
+  tagsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: theme.spacing.sm,
-  },
-  distance: {
-    fontSize: 13,
-    color: theme.colors.textPrimary,
-  },
-  distancePlaceholder: {
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-  },
-  votes: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: theme.colors.textPrimary,
+    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
   },
 });
