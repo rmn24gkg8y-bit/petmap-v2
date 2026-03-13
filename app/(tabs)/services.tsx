@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useMemo, type ComponentProps } from 'react';
 import { SymbolView } from 'expo-symbols';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { SectionHeader, TagChip } from '@/components/ui';
 import { SPOT_TYPE_LABELS } from '@/constants/spotFormOptions';
@@ -13,6 +13,15 @@ type ServiceCategory = {
   spotType: SpotType;
   icon: ComponentProps<typeof SymbolView>['name'];
   tint: string;
+};
+
+type ActivityItem = {
+  key: string;
+  title: string;
+  summary: string;
+  statusLabel: string;
+  ctaLabel: string;
+  spotId?: string;
 };
 
 const SERVICE_CATEGORIES: ServiceCategory[] = [
@@ -48,6 +57,30 @@ const SERVICE_CATEGORIES: ServiceCategory[] = [
   },
 ];
 
+const ACTIVITY_SEED: Omit<ActivityItem, 'spotId'>[] = [
+  {
+    key: 'weekend-walk',
+    title: '周末宠物散步集合',
+    summary: '适合带宠物轻松出门的线下小活动，先从热门地点开始。',
+    statusLabel: '本周活动',
+    ctaLabel: '去地图看看',
+  },
+  {
+    key: 'pet-friendly-pick',
+    title: '本周宠物友好精选',
+    summary: '平台正在整理适合带宠物停留和打卡的地点内容。',
+    statusLabel: '平台活动',
+    ctaLabel: '查看地点',
+  },
+  {
+    key: 'merchant-event',
+    title: '商家活动报名',
+    summary: '后续会支持品牌和商家发布活动内容，当前先开放前台预览。',
+    statusLabel: '即将支持',
+    ctaLabel: '即将支持报名',
+  },
+];
+
 function getDisplayAddress(spot: Spot) {
   return (
     spot.formattedAddress?.trim() ||
@@ -80,6 +113,14 @@ export default function ServicesScreen() {
     () => [...spots].sort((a, b) => b.votes - a.votes).slice(0, 2),
     [spots]
   );
+  const featuredActivities = useMemo<ActivityItem[]>(
+    () =>
+      ACTIVITY_SEED.map((activity, index) => ({
+        ...activity,
+        spotId: recommendedSpots[index]?.id,
+      })),
+    [recommendedSpots]
+  );
 
   function handleOpenExploreByType(spotType: SpotType) {
     resetExploreFilters();
@@ -90,6 +131,15 @@ export default function ServicesScreen() {
   function handleOpenSpotOnMap(spotId: string) {
     setSelectedSpot(spotId);
     router.navigate('/(tabs)');
+  }
+
+  function handleOpenActivity(activity: ActivityItem) {
+    if (activity.spotId) {
+      handleOpenSpotOnMap(activity.spotId);
+      return;
+    }
+
+    Alert.alert('即将支持', '活动报名和详情能力正在准备中。');
   }
 
   function renderCompactSpotCard(spot: Spot) {
@@ -159,6 +209,50 @@ export default function ServicesScreen() {
             {recommendedSpots.map((spot) => renderCompactSpotCard(spot))}
           </ScrollView>
         )}
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.sectionHeaderRow}>
+          <View>
+            <Text style={styles.sectionTitle}>本周活动</Text>
+            <Text style={styles.sectionDescription}>平台当前整理中的宠物活动与后续商家活动入口。</Text>
+          </View>
+          <TagChip label={`${featuredActivities.length} 条`} compact />
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalList}>
+          {featuredActivities.map((activity) => {
+            const linkedSpotName =
+              activity.spotId ? spots.find((spot) => spot.id === activity.spotId)?.name ?? '' : '';
+
+            return (
+              <Pressable
+                key={activity.key}
+                onPress={() => handleOpenActivity(activity)}
+                style={({ pressed }) => [styles.activityCard, pressed ? styles.cardPressed : null]}>
+                <View style={styles.activityTopRow}>
+                  <TagChip label={activity.statusLabel} compact />
+                  {linkedSpotName ? (
+                    <Text style={styles.activitySpotName} numberOfLines={1}>
+                      {linkedSpotName}
+                    </Text>
+                  ) : null}
+                </View>
+                <Text style={styles.activityTitle}>{activity.title}</Text>
+                <Text style={styles.activitySummary} numberOfLines={3}>
+                  {activity.summary}
+                </Text>
+                <Pressable
+                  onPress={() => handleOpenActivity(activity)}
+                  style={({ pressed }) => [
+                    styles.activityCta,
+                    pressed ? styles.cardPressed : null,
+                  ]}>
+                  <Text style={styles.activityCtaText}>{activity.ctaLabel}</Text>
+                </Pressable>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       </View>
     </ScrollView>
   );
@@ -253,6 +347,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: theme.colors.textSecondary,
   },
+  sectionDescription: {
+    marginTop: 3,
+    fontSize: 12,
+    lineHeight: 17,
+    color: theme.colors.textSecondary,
+  },
   horizontalList: {
     gap: theme.spacing.xs,
     paddingRight: theme.spacing.xs,
@@ -280,5 +380,53 @@ const styles = StyleSheet.create({
     marginTop: 6,
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  activityCard: {
+    width: 220,
+    borderRadius: theme.radii.md,
+    borderWidth: 0.5,
+    borderColor: '#E7EAF0',
+    backgroundColor: theme.colors.cardBackground,
+    paddingHorizontal: 11,
+    paddingVertical: 10,
+  },
+  activityTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing.xs,
+  },
+  activitySpotName: {
+    flex: 1,
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+    textAlign: 'right',
+  },
+  activityTitle: {
+    marginTop: 8,
+    fontSize: 14,
+    fontWeight: '800',
+    color: theme.colors.textPrimary,
+  },
+  activitySummary: {
+    marginTop: 5,
+    fontSize: 12,
+    lineHeight: 17,
+    color: theme.colors.textSecondary,
+  },
+  activityCta: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    borderRadius: theme.radii.pill,
+    backgroundColor: theme.colors.primarySoft,
+    borderWidth: 1,
+    borderColor: '#D7E5FF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  activityCtaText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.primary,
   },
 });
