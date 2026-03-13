@@ -25,6 +25,30 @@ const SORT_MODE_LABELS = {
   distance: '距离优先',
 } as const;
 
+const PET_FRIENDLY_LABELS = {
+  high: '宠物友好高',
+  medium: '宠物友好中',
+  low: '宠物友好待确认',
+} as const;
+
+function getExploreStatusBadge(
+  spot: ReturnType<typeof usePetMapStore>['filteredSpots'][number]
+) {
+  if (spot.submissionStatus === 'pending_review') {
+    return { label: '审核中', variant: 'pending' as const };
+  }
+
+  if (spot.verified) {
+    return { label: '已发布', variant: 'favorite' as const };
+  }
+
+  if (spot.source === 'user') {
+    return { label: '待提交', variant: 'local' as const };
+  }
+
+  return null;
+}
+
 type ExploreListItem =
   | { type: 'sticky'; key: 'sticky' }
   | { type: 'aux'; key: 'aux' }
@@ -273,10 +297,15 @@ export default function ExploreScreen() {
 
           const spot = item.spot;
           const identityBadge = getSpotIdentityBadge(spot);
+          const statusBadge = getExploreStatusBadge(spot);
           const displayAddress =
             spot.formattedAddress?.trim() ||
             [spot.district, spot.addressHint].map((value) => value.trim()).filter(Boolean).join(' · ') ||
             '地址待补充';
+          const quickFacts = [
+            spot.petFriendlyLevel ? PET_FRIENDLY_LABELS[spot.petFriendlyLevel] : null,
+            spot.priceLevel ? `价格 ${spot.priceLevel}` : null,
+          ].filter((value): value is string => Boolean(value));
 
           return (
             <SpotCard
@@ -286,31 +315,52 @@ export default function ExploreScreen() {
               badges={
                 <>
                   <StatusBadge
-                    label={isFavorite(spot.id) ? '已收藏' : '未收藏'}
-                    variant={isFavorite(spot.id) ? 'favorite' : 'favoriteInactive'}
-                  />
-                  <StatusBadge
                     label={identityBadge.label}
                     variant={identityBadge.variant}
                   />
+                  {statusBadge ? (
+                    <StatusBadge
+                      label={statusBadge.label}
+                      variant={statusBadge.variant}
+                    />
+                  ) : null}
+                  {isFavorite(spot.id) ? (
+                    <StatusBadge
+                      label="已收藏"
+                      variant="favorite"
+                    />
+                  ) : null}
                 </>
               }
-              tags={spot.tags}
-              horizontalTags
+              tags={spot.tags.slice(0, 3)}
+              horizontalTags={spot.tags.length > 2}
               onPressTop={() => handleSelectSpot(spot.id)}
               onPressBottom={() => handleSelectSpot(spot.id)}
               description={spot.description}
               descriptionLines={2}
               footer={
                 <View style={styles.cardFooter}>
-                  {userLoc ? (
-                    <Text style={styles.distance}>
-                      距离你约 {formatDistance(getDistanceMeters(userLoc, { lat: spot.lat, lng: spot.lng }))}
-                    </Text>
-                  ) : (
-                    <Text style={styles.distancePlaceholder}>尚未获取位置</Text>
-                  )}
-                  <Text style={styles.votes}>{spot.votes} votes</Text>
+                  <View style={styles.quickFactsRow}>
+                    {quickFacts.length > 0 ? (
+                      quickFacts.map((fact) => (
+                        <Text key={fact} style={styles.quickFactChip}>
+                          {fact}
+                        </Text>
+                      ))
+                    ) : (
+                      <Text style={styles.quickFactPlaceholder}>打开详情可查看更多信息</Text>
+                    )}
+                  </View>
+                  <View style={styles.footerMetaRow}>
+                    {userLoc ? (
+                      <Text style={styles.distance}>
+                        距离你约 {formatDistance(getDistanceMeters(userLoc, { lat: spot.lat, lng: spot.lng }))}
+                      </Text>
+                    ) : (
+                      <Text style={styles.distancePlaceholder}>尚未获取位置</Text>
+                    )}
+                    <Text style={styles.votes}>{spot.votes} votes</Text>
+                  </View>
                 </View>
               }
             />
@@ -476,13 +526,36 @@ const styles = StyleSheet.create({
     color: theme.colors.textPrimary,
   },
   cardFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     marginTop: theme.spacing.sm + 2,
     paddingTop: 14,
     borderTopWidth: 1,
     borderTopColor: theme.colors.divider,
+    gap: theme.spacing.sm,
+  },
+  quickFactsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
+  },
+  quickFactChip: {
+    borderRadius: theme.radii.pill,
+    backgroundColor: theme.colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+  },
+  quickFactPlaceholder: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+  },
+  footerMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing.sm,
   },
   distance: {
     fontSize: 13,
