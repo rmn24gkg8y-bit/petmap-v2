@@ -175,7 +175,12 @@ export function SpotDetailSheet({
       ) : null}
       {shouldShowPlatformMaintenanceHint ? (
         <View style={styles.platformHintSection}>
-          <Text style={styles.platformHintText}>该地点由平台整理维护，后续将支持商家认领与信息更新。</Text>
+          <View style={styles.platformStateRow}>
+            <Text style={styles.platformStateChip}>信息持续整理中</Text>
+          </View>
+          <Text style={styles.platformHintText}>
+            该地点由平台整理维护，欢迎反馈修正；商家认领后可支持信息更新。
+          </Text>
           <View style={styles.platformHintActions}>
             <Text style={styles.platformComingSoonChip}>商家认领（即将支持）</Text>
             <Pressable
@@ -318,6 +323,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     color: theme.colors.textSecondary,
+  },
+  platformStateRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  platformStateChip: {
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1D4ED8',
   },
   platformHintActions: {
     flexDirection: 'row',
