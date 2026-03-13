@@ -35,7 +35,12 @@ export default function MyFavoritesScreen() {
 
   function handleSelectSpot(id: string) {
     setSelectedSpot(id);
-    router.navigate('/(tabs)');
+    router.navigate({
+      pathname: '/(tabs)',
+      params: {
+        returnTo: 'my-favorites',
+      },
+    });
   }
 
   return (

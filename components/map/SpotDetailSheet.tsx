@@ -184,7 +184,19 @@ export function SpotDetailSheet({
           <View style={styles.platformHintActions}>
             <Text style={styles.platformComingSoonChip}>商家认领（即将支持）</Text>
             <Pressable
-              onPress={() => router.push('/feedback')}
+              onPress={() =>
+                router.push({
+                  pathname: '/feedback',
+                  params: {
+                    type: 'spot',
+                    contextType: 'spot',
+                    spotId: selectedSpot.id,
+                    spotName: selectedSpot.name,
+                    spotAddress: selectedSpotDisplayAddress,
+                    spotIdentityLabel: identityBadge.label,
+                  },
+                })
+              }
               style={styles.platformFeedbackButton}>
               <Text style={styles.platformFeedbackButtonText}>反馈地点信息</Text>
             </Pressable>

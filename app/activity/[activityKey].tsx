@@ -1,7 +1,7 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { EmptyStateCard, PrimaryButton, SectionHeader, SpotCard, TagChip } from '@/components/ui';
+import { ActivityVisual, EmptyStateCard, PrimaryButton, SectionHeader, SpotCard, TagChip } from '@/components/ui';
 import {
   getActivityCollectionByKey,
 } from '@/constants/activityCollections';
@@ -58,10 +58,13 @@ export default function ActivityCollectionScreen() {
               </View>
             </View>
           ) : (
-            <View style={styles.heroCard}>
-              <TagChip label={activity.statusLabel} compact />
-              <Text style={styles.heroText}>围绕一个主题整理相关地点，当前由平台持续补充，后续也会逐步支持更多活动内容。</Text>
-            </View>
+            <ActivityVisual
+              title={activity.title}
+              summary={activity.summary}
+              statusLabel={activity.statusLabel}
+              variant="hero"
+              style={styles.heroVisual}
+            />
           )}
 
           <View style={styles.sectionHeaderRow}>
@@ -117,15 +120,6 @@ const styles = StyleSheet.create({
     padding: theme.spacing.lg,
     justifyContent: 'center',
   },
-  heroCard: {
-    borderRadius: theme.radii.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.cardBackground,
-    padding: theme.spacing.md,
-    gap: theme.spacing.sm,
-    ...theme.shadows.card,
-  },
   heroImageWrap: {
     borderRadius: theme.radii.lg,
     overflow: 'hidden',
@@ -147,10 +141,8 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     color: theme.colors.textSecondary,
   },
-  heroText: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: theme.colors.textSecondary,
+  heroVisual: {
+    ...theme.shadows.card,
   },
   sectionHeaderRow: {
     marginTop: theme.spacing.md,
