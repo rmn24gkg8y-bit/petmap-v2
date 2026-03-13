@@ -8,6 +8,7 @@ const RECENT_VIEWED_IDS_KEY = 'petmap.recentViewedIds';
 const USER_CREATED_SPOTS_KEY = 'petmap.userCreatedSpots';
 const FORMATTED_ADDRESS_MAP_KEY = 'petmap.formattedAddressBySpotId';
 const FEEDBACK_RECORDS_KEY = 'petmap.feedbackRecords';
+const INBOX_READ_AT_BY_MESSAGE_ID_KEY = 'petmap.inboxReadAtByMessageId';
 
 function parseStringArray(value: string | null): string[] {
   if (!value) {
@@ -296,6 +297,24 @@ export async function loadFormattedAddressBySpotId() {
 export async function saveFormattedAddressBySpotId(value: Record<string, string>) {
   try {
     await AsyncStorage.setItem(FORMATTED_ADDRESS_MAP_KEY, JSON.stringify(value));
+  } catch {
+    // Ignore persistence errors for now and keep the in-memory state usable.
+  }
+}
+
+export async function loadInboxReadAtByMessageId() {
+  try {
+    const value = await AsyncStorage.getItem(INBOX_READ_AT_BY_MESSAGE_ID_KEY);
+
+    return parseStringRecord(value);
+  } catch {
+    return {};
+  }
+}
+
+export async function saveInboxReadAtByMessageId(value: Record<string, string>) {
+  try {
+    await AsyncStorage.setItem(INBOX_READ_AT_BY_MESSAGE_ID_KEY, JSON.stringify(value));
   } catch {
     // Ignore persistence errors for now and keep the in-memory state usable.
   }

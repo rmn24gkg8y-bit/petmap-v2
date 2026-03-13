@@ -1,4 +1,5 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { useEffect } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { EmptyStateCard, PrimaryButton, SectionHeader, TagChip } from '@/components/ui';
@@ -88,9 +89,17 @@ function getFeedbackStatusLabel(item: InboxItem) {
 
 export default function InboxDetailScreen() {
   const params = useLocalSearchParams<{ messageId?: string }>();
-  const { inboxItems, setSelectedSpot } = usePetMapStore();
+  const { inboxItems, markInboxItemAsRead, setSelectedSpot } = usePetMapStore();
   const messageId = Array.isArray(params.messageId) ? params.messageId[0] : params.messageId;
   const item = inboxItems.find((entry) => entry.id === messageId);
+
+  useEffect(() => {
+    if (!messageId || !item) {
+      return;
+    }
+
+    markInboxItemAsRead(messageId);
+  }, [item, markInboxItemAsRead, messageId]);
 
   function handleOpenTarget() {
     if (!item || item.sourceType !== 'platform' || !item.target) {

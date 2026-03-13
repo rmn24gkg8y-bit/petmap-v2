@@ -67,7 +67,7 @@ function getInboxContextText(item: InboxItem) {
 }
 
 export default function InboxScreen() {
-  const { inboxItems, feedbackRecords } = usePetMapStore();
+  const { inboxItems, feedbackRecords, isInboxItemRead } = usePetMapStore();
   const [selectedFilter, setSelectedFilter] = useState<InboxFilterKey>('all');
   const filteredItems = useMemo(() => {
     if (selectedFilter === 'all') {
@@ -125,27 +125,40 @@ export default function InboxScreen() {
             description="提交反馈后，你的记录会出现在这里；平台消息也会逐步补充。"
           />
         ) : (
-          filteredItems.map((item) => (
-            <Pressable
-              key={item.id}
-              onPress={() => router.push(`/inbox/${item.id}`)}
-              style={({ pressed }) => [styles.messageCard, pressed ? styles.messageCardPressed : null]}>
-              <View style={styles.messageTopRow}>
-                <TagChip label={getInboxChipLabel(item)} compact />
-                <Text style={styles.messageTime}>{formatInboxDate(item.createdAt)}</Text>
-              </View>
-              <Text style={styles.messageTitle}>{item.title}</Text>
-              <Text style={styles.messageContent} numberOfLines={4}>
-                {item.content}
-              </Text>
-              {item.sourceType === 'feedback' ? (
-                <View style={styles.messageMetaRow}>
-                  <Text style={styles.messageMeta}>{getInboxContextText(item)}</Text>
-                  <Text style={styles.messageStatus}>已收到</Text>
+          filteredItems.map((item) => {
+            const isRead = isInboxItemRead(item.id);
+
+            return (
+              <Pressable
+                key={item.id}
+                onPress={() => router.push(`/inbox/${item.id}`)}
+                style={({ pressed }) => [
+                  styles.messageCard,
+                  !isRead ? styles.messageCardUnread : null,
+                  pressed ? styles.messageCardPressed : null,
+                ]}>
+                <View style={styles.messageTopRow}>
+                  <View style={styles.messageTopMeta}>
+                    <TagChip label={getInboxChipLabel(item)} compact />
+                    {!isRead ? <View style={styles.unreadDot} /> : null}
+                  </View>
+                  <Text style={styles.messageTime}>{formatInboxDate(item.createdAt)}</Text>
                 </View>
-              ) : null}
-            </Pressable>
-          ))
+                <Text style={[styles.messageTitle, !isRead ? styles.messageTitleUnread : null]}>
+                  {item.title}
+                </Text>
+                <Text style={styles.messageContent} numberOfLines={4}>
+                  {item.content}
+                </Text>
+                {item.sourceType === 'feedback' ? (
+                  <View style={styles.messageMetaRow}>
+                    <Text style={styles.messageMeta}>{getInboxContextText(item)}</Text>
+                    <Text style={styles.messageStatus}>已收到</Text>
+                  </View>
+                ) : null}
+              </Pressable>
+            );
+          })
         )}
       </ScrollView>
     </View>
@@ -213,6 +226,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: theme.spacing.xs,
   },
+  messageTopMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   messageTime: {
     fontSize: 12,
     color: theme.colors.textTertiary,
@@ -222,10 +240,23 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: theme.colors.textPrimary,
   },
+  messageTitleUnread: {
+    color: theme.colors.textPrimary,
+  },
   messageContent: {
     fontSize: 13,
     lineHeight: 19,
     color: theme.colors.textSecondary,
+  },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: theme.radii.pill,
+    backgroundColor: theme.colors.primary,
+  },
+  messageCardUnread: {
+    borderColor: '#D7E5FF',
+    backgroundColor: '#FBFDFF',
   },
   messageMetaRow: {
     marginTop: 2,
