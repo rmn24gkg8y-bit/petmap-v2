@@ -18,6 +18,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import MapView, { Marker, type Region } from 'react-native-maps';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MapQuickActions } from '@/components/map/MapQuickActions';
@@ -51,6 +52,7 @@ type SheetStage = 'collapsed' | 'half' | 'full';
 export default function TabOneScreen() {
   const params = useLocalSearchParams<{ returnTo?: string; returnStatus?: string }>();
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
   const { height: windowHeight } = useWindowDimensions();
   const mapRef = useRef<MapView | null>(null);
   const [activeReturnContext, setActiveReturnContext] = useState<{
@@ -78,7 +80,6 @@ export default function TabOneScreen() {
   });
   const {
     hasHydratedStorage,
-    totalSpots,
     favoriteCount,
     spots,
     selectedSpot,
@@ -132,6 +133,12 @@ export default function TabOneScreen() {
   const fullOffset = 0;
   const halfOffset = Math.max(fullSheetHeight - halfSheetHeight, 0);
   const collapsedOffset = Math.max(fullSheetHeight - collapsedSheetHeight, 0);
+  const sheetContainerBottomInset = 0;
+  const sheetContentBottomPadding = sheetStage === 'full' ? 32 : 24;
+  const sheetFooterSpacerHeight = Math.max(
+    tabBarHeight + insets.bottom + (sheetStage === 'full' ? 96 : 156),
+    176
+  );
   const quickActionsBottom = Math.max(sheetVisibleHeight + 16, insets.bottom + 120);
   const sheetTranslateY = useRef(new Animated.Value(collapsedOffset)).current;
   const dragStartRef = useRef(collapsedOffset);
@@ -925,7 +932,7 @@ export default function TabOneScreen() {
             styles.sheet,
             {
               height: fullSheetHeight,
-              paddingBottom: insets.bottom + 18,
+              paddingBottom: sheetContainerBottomInset,
               transform: [{ translateY: sheetTranslateY }],
             },
           ]}>
@@ -970,10 +977,13 @@ export default function TabOneScreen() {
           ) : (
             <ScrollView
               style={styles.sheetScroll}
+              contentInset={{ bottom: sheetFooterSpacerHeight }}
               contentContainerStyle={[
                 styles.sheetContent,
                 sheetStage === 'full' ? styles.fullSheetContent : null,
+                { paddingBottom: sheetContentBottomPadding },
               ]}
+              scrollIndicatorInsets={{ bottom: sheetFooterSpacerHeight }}
               showsVerticalScrollIndicator={false}>
               {sheetStage === 'full' ? (
                 <View style={styles.fullHeroSection}>
@@ -1014,6 +1024,7 @@ export default function TabOneScreen() {
                 onPickSpotPhoto={handlePickSpotPhoto}
                 onRemoveSpotPhoto={handleRemoveSpotPhoto}
               />
+              <View style={[styles.sheetFooterSpacer, { height: sheetFooterSpacerHeight }]} />
             </ScrollView>
           )}
         </Animated.View>
@@ -1160,56 +1171,6 @@ const styles = StyleSheet.create({
   markerStemSelected: {
     height: 12,
   },
-  eyebrow: {
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    color: theme.colors.primary,
-  },
-  title: {
-    marginTop: 8,
-    fontSize: 30,
-    fontWeight: '800',
-    color: theme.colors.textPrimary,
-  },
-  description: {
-    marginTop: 10,
-    fontSize: 15,
-    lineHeight: 22,
-    color: theme.colors.textSecondary,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-    marginTop: 18,
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: theme.radii.md,
-    backgroundColor: 'rgba(255, 255, 255, 0.94)',
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    ...theme.shadows.card,
-  },
-  statValue: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: theme.colors.textPrimary,
-  },
-  statLabel: {
-    marginTop: 4,
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-  },
-  statAction: {
-    marginTop: 10,
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.accent,
-  },
   sheet: {
     position: 'absolute',
     left: 0,
@@ -1240,6 +1201,9 @@ const styles = StyleSheet.create({
   },
   fullSheetContent: {
     paddingBottom: 24,
+  },
+  sheetFooterSpacer: {
+    width: '100%',
   },
   collapsedCard: {
     marginHorizontal: theme.spacing.lg,
