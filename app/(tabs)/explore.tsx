@@ -6,6 +6,7 @@ import {
   SPOT_TYPE_LABELS,
   SPOT_TYPE_OPTIONS,
 } from '@/constants/spotFormOptions';
+import { getSpotIdentityBadge } from '@/constants/spotIdentity';
 import {
   EmptyStateCard,
   PrimaryButton,
@@ -271,6 +272,7 @@ export default function ExploreScreen() {
           }
 
           const spot = item.spot;
+          const identityBadge = getSpotIdentityBadge(spot);
           const displayAddress =
             spot.formattedAddress?.trim() ||
             [spot.district, spot.addressHint].map((value) => value.trim()).filter(Boolean).join(' · ') ||
@@ -288,8 +290,8 @@ export default function ExploreScreen() {
                     variant={isFavorite(spot.id) ? 'favorite' : 'favoriteInactive'}
                   />
                   <StatusBadge
-                    label={spot.source === 'user' ? '我添加的' : '系统收录'}
-                    variant={spot.source === 'user' ? 'user' : 'system'}
+                    label={identityBadge.label}
+                    variant={identityBadge.variant}
                   />
                 </>
               }
