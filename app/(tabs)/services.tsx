@@ -3,7 +3,7 @@ import { useMemo, type ComponentProps } from 'react';
 import { SymbolView } from 'expo-symbols';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { SectionHeader, TagChip } from '@/components/ui';
+import { ActivityVisual, SectionHeader, TagChip } from '@/components/ui';
 import { ACTIVITY_COLLECTIONS, type ActivityCollection } from '@/constants/activityCollections';
 import { SPOT_TYPE_LABELS } from '@/constants/spotFormOptions';
 import { theme } from '@/constants/theme';
@@ -192,14 +192,12 @@ export default function ServicesScreen() {
                 {activity.imageUri ? (
                   <Image source={{ uri: activity.imageUri }} style={styles.activityImage} />
                 ) : (
-                  <View style={styles.activityImagePlaceholder}>
-                    <SymbolView
-                      name={{ ios: 'photo', android: 'photo', web: 'image' }}
-                      tintColor="#94A3B8"
-                      size={18}
-                    />
-                    <Text style={styles.activityImagePlaceholderText}>活动主视觉预留</Text>
-                  </View>
+                  <ActivityVisual
+                    title={activity.title}
+                    summary={activity.summary}
+                    statusLabel={activity.statusLabel}
+                    style={styles.activityVisual}
+                  />
                 )}
                 <View style={styles.activityTopRow}>
                   <TagChip label={activity.statusLabel} compact />
@@ -369,21 +367,8 @@ const styles = StyleSheet.create({
     borderRadius: theme.radii.sm,
     marginBottom: 9,
   },
-  activityImagePlaceholder: {
-    width: '100%',
-    height: 88,
-    borderRadius: theme.radii.sm,
+  activityVisual: {
     marginBottom: 9,
-    backgroundColor: theme.colors.surfaceMuted,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  activityImagePlaceholderText: {
-    fontSize: 11,
-    color: theme.colors.textSecondary,
   },
   activityTopRow: {
     flexDirection: 'row',

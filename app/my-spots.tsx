@@ -125,12 +125,24 @@ export default function MySpotsScreen() {
 
   function handleSelectSpot(id: string) {
     setSelectedSpot(id);
-    router.navigate('/(tabs)');
+    router.navigate({
+      pathname: '/(tabs)',
+      params: {
+        returnTo: 'my-spots',
+        returnStatus: selectedStatusFilter,
+      },
+    });
   }
 
   function handleEditSpot(id: string) {
     setSelectedSpot(id);
-    router.navigate('/(tabs)');
+    router.navigate({
+      pathname: '/(tabs)',
+      params: {
+        returnTo: 'my-spots',
+        returnStatus: selectedStatusFilter,
+      },
+    });
   }
 
   function handleDeleteSpot(id: string) {

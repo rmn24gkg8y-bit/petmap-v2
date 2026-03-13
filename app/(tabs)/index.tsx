@@ -1,16 +1,18 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import { router } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
   Linking,
   PanResponder,
   Platform,
+  Pressable,
   ScrollView,
   Share,
   StyleSheet,
+  Text,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -45,9 +47,14 @@ const SPOT_TYPE_MARKER_COLORS: Record<
 };
 
 export default function TabOneScreen() {
+  const params = useLocalSearchParams<{ returnTo?: string; returnStatus?: string }>();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const mapRef = useRef<MapView | null>(null);
+  const [activeReturnContext, setActiveReturnContext] = useState<{
+    returnTo: 'my-spots' | 'my-favorites';
+    returnStatus?: string;
+  } | null>(null);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [editingSpotId, setEditingSpotId] = useState<string | null>(null);
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
@@ -97,6 +104,46 @@ export default function TabOneScreen() {
   const sheetVisibleHeightRef = useRef(collapsedSheetHeight);
   const inFlightAddressSpotIdsRef = useRef<Set<string>>(new Set());
   const amapWebKey = process.env.EXPO_PUBLIC_AMAP_WEB_KEY?.trim() ?? '';
+  const returnToParam = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
+  const returnStatusParam = Array.isArray(params.returnStatus) ? params.returnStatus[0] : params.returnStatus;
+  const returnContext =
+    activeReturnContext?.returnTo === 'my-spots'
+      ? {
+          label: '返回我的地点',
+          onPress: () =>
+            router.push({
+              pathname: '/my-spots',
+              params: activeReturnContext.returnStatus
+                ? { status: activeReturnContext.returnStatus }
+                : undefined,
+            }),
+        }
+      : activeReturnContext?.returnTo === 'my-favorites'
+        ? {
+            label: '返回我的收藏',
+            onPress: () => router.push('/my-favorites'),
+          }
+        : null;
+
+  useEffect(() => {
+    if (returnToParam !== 'my-spots' && returnToParam !== 'my-favorites') {
+      return;
+    }
+
+    setActiveReturnContext({
+      returnTo: returnToParam,
+      returnStatus: returnToParam === 'my-spots' ? returnStatusParam : undefined,
+    });
+    router.replace('/(tabs)');
+  }, [returnStatusParam, returnToParam]);
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        setActiveReturnContext(null);
+      };
+    }, [])
+  );
 
   async function requestAmapReverseGeocode(lat: number, lng: number) {
     if (!amapWebKey) {
@@ -677,6 +724,20 @@ export default function TabOneScreen() {
 
   return (
     <View style={styles.container}>
+      {returnContext ? (
+        <View style={styles.returnEntryWrap}>
+          <Pressable
+            onPress={() => {
+              setActiveReturnContext(null);
+              returnContext.onPress();
+            }}
+            style={({ pressed }) => [styles.returnEntry, pressed ? styles.returnEntryPressed : null]}>
+            <Text style={styles.returnEntryLabel}>{returnContext.label}</Text>
+            <Text style={styles.returnEntryAction}>返回</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       <MapView
         ref={mapRef}
         style={styles.map}
@@ -807,6 +868,39 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
+  },
+  returnEntryWrap: {
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: 6,
+    paddingBottom: 6,
+    backgroundColor: theme.colors.pageBackground,
+  },
+  returnEntry: {
+    minHeight: 40,
+    borderRadius: theme.radii.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.cardBackground,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing.sm,
+  },
+  returnEntryPressed: {
+    opacity: 0.86,
+  },
+  returnEntryLabel: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.colors.textPrimary,
+  },
+  returnEntryAction: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.primary,
   },
   quickActions: {
     position: 'absolute',

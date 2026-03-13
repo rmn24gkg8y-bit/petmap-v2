@@ -1,3 +1,4 @@
+export { ActivityVisual } from './ActivityVisual';
 export { EmptyStateCard } from './EmptyStateCard';
 export { PrimaryButton } from './PrimaryButton';
 export { SectionHeader } from './SectionHeader';

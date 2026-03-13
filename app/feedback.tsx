@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -49,10 +49,37 @@ function getFeedbackTypeConfig(type: FeedbackTypeKey) {
 }
 
 export default function FeedbackScreen() {
-  const [selectedType, setSelectedType] = useState<FeedbackTypeKey>('spot');
+  const params = useLocalSearchParams<{
+    type?: string;
+    contextType?: string;
+    spotId?: string;
+    spotName?: string;
+    spotAddress?: string;
+    spotIdentityLabel?: string;
+  }>();
+  const contextType = Array.isArray(params.contextType) ? params.contextType[0] : params.contextType;
+  const spotName = Array.isArray(params.spotName) ? params.spotName[0] : params.spotName;
+  const spotAddress = Array.isArray(params.spotAddress) ? params.spotAddress[0] : params.spotAddress;
+  const spotIdentityLabel = Array.isArray(params.spotIdentityLabel)
+    ? params.spotIdentityLabel[0]
+    : params.spotIdentityLabel;
+  const hasSpotContext = contextType === 'spot' && Boolean(spotName);
+  const defaultType: FeedbackTypeKey = 'spot';
+  const [selectedType, setSelectedType] = useState<FeedbackTypeKey>(defaultType);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const activeType = getFeedbackTypeConfig(selectedType);
+  const titlePlaceholder =
+    hasSpotContext && selectedType === 'spot'
+      ? `例如：${spotName}的信息需要更新`
+      : activeType.titlePlaceholder;
+  const contentPlaceholder =
+    hasSpotContext && selectedType === 'spot'
+      ? '请说明这个地点的哪部分信息不准确，例如地址、营业状态、宠物友好信息、图片或标签等。'
+      : activeType.contentPlaceholder;
+  const helperText = hasSpotContext
+    ? '当前反馈会保留地点上下文，方便你连续补充同一地点的问题。'
+    : '当前会先完成前台反馈闭环，后续也会逐步支持从地点页或活动页带入上下文信息。';
 
   function handleSubmitFeedback() {
     if (!content.trim()) {
@@ -61,7 +88,7 @@ export default function FeedbackScreen() {
     }
 
     Alert.alert('反馈已收到', '感谢你的反馈，我们会结合内容持续整理和优化。');
-    setSelectedType('spot');
+    setSelectedType(defaultType);
     setTitle('');
     setContent('');
   }
@@ -78,6 +105,19 @@ export default function FeedbackScreen() {
         />
 
         <View style={styles.card}>
+          {hasSpotContext ? (
+            <View style={styles.contextCard}>
+              <Text style={styles.contextEyebrow}>当前反馈对象</Text>
+              <Text style={styles.contextTitle}>{spotName}</Text>
+              <Text style={styles.contextAddress}>{spotAddress?.trim() || '地址待补充'}</Text>
+              {spotIdentityLabel ? (
+                <View style={styles.contextBadgeRow}>
+                  <TagChip label={spotIdentityLabel} compact />
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>反馈类型</Text>
             <Text style={styles.sectionDescription}>先选择这条反馈更接近哪一类，方便我们后续整理。</Text>
@@ -103,7 +143,7 @@ export default function FeedbackScreen() {
             <TextInput
               value={title}
               onChangeText={setTitle}
-              placeholder={activeType.titlePlaceholder}
+              placeholder={titlePlaceholder}
               placeholderTextColor={theme.colors.textTertiary}
               style={styles.titleInput}
             />
@@ -115,7 +155,7 @@ export default function FeedbackScreen() {
             <TextInput
               value={content}
               onChangeText={setContent}
-              placeholder={activeType.contentPlaceholder}
+              placeholder={contentPlaceholder}
               placeholderTextColor={theme.colors.textTertiary}
               style={styles.contentInput}
               multiline
@@ -124,9 +164,7 @@ export default function FeedbackScreen() {
 
           <View style={styles.helperCard}>
             <Text style={styles.helperTitle}>补充说明</Text>
-            <Text style={styles.helperText}>
-              当前会先完成前台反馈闭环，后续也会逐步支持从地点页或活动页带入上下文信息。
-            </Text>
+            <Text style={styles.helperText}>{helperText}</Text>
           </View>
 
           <PrimaryButton
@@ -161,6 +199,33 @@ const styles = StyleSheet.create({
     padding: theme.spacing.md,
     gap: theme.spacing.md,
     ...theme.shadows.card,
+  },
+  contextCard: {
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceMuted,
+    padding: theme.spacing.sm,
+    gap: 4,
+  },
+  contextEyebrow: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.primary,
+  },
+  contextTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: theme.colors.textPrimary,
+  },
+  contextAddress: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: theme.colors.textSecondary,
+  },
+  contextBadgeRow: {
+    marginTop: 4,
+    flexDirection: 'row',
   },
   section: {
     gap: theme.spacing.xs,
