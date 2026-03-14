@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { FlatList, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { EmptyStateCard, PrimaryButton, SectionHeader, SpotCard, StatusBadge, TagChip } from '@/components/ui';
+import { SPOT_TYPE_LABELS } from '@/constants/spotFormOptions';
 import { getSpotIdentityBadge } from '@/constants/spotIdentity';
 import { theme } from '@/constants/theme';
 import { usePetMapStore } from '@/store/petmap-store';
@@ -33,6 +34,11 @@ export default function MyFavoritesScreen() {
     });
   }, [favoriteSpots, normalizedQuery, selectedSourceFilter]);
 
+  function resetLocalFilters() {
+    setSearchQuery('');
+    setSelectedSourceFilter('all');
+  }
+
   function handleSelectSpot(id: string) {
     setSelectedSpot(id);
     router.navigate({
@@ -56,9 +62,9 @@ export default function MyFavoritesScreen() {
         ListHeaderComponent={
           <View style={styles.header}>
             <SectionHeader
-              eyebrow="收藏管理"
+              eyebrow="我的清单"
               title="我的收藏"
-              subtitle={`快速回到你标记过的重要地点，共 ${favoriteSpots.length} 个。`}
+              subtitle={`共 ${favoriteSpots.length} 个，支持关键词和来源筛选。`}
             />
             <View style={styles.toolbar}>
               <TextInput
@@ -99,16 +105,17 @@ export default function MyFavoritesScreen() {
           <View style={styles.listEmpty}>
             {favoriteSpots.length === 0 ? (
               <EmptyStateCard
-                title="你还没有收藏任何地点"
-                description="可以去 Explore 或地图页挑选并收藏地点"
+                title="暂无收藏地点"
+                description="去 Explore 或地图页挑选并收藏地点。"
                 action={
-                  <PrimaryButton label="前往 Explore" onPress={() => router.navigate('/(tabs)/explore')} />
+                  <PrimaryButton label="去探索地点" onPress={() => router.navigate('/(tabs)/explore')} />
                 }
               />
             ) : (
               <EmptyStateCard
-                title="没有符合条件的收藏地点"
-                description="试试更换关键词，或切换来源筛选。"
+                title="没有匹配的收藏地点"
+                description="试试调整关键词或筛选条件。"
+                action={<PrimaryButton label="重置筛选" onPress={resetLocalFilters} />}
               />
             )}
           </View>
@@ -126,13 +133,15 @@ export default function MyFavoritesScreen() {
               }
               photoUri={item.photoUris?.[0]}
               badges={
-                <StatusBadge
-                  label={identityBadge.label}
-                  variant={identityBadge.variant}
-                />
+                <>
+                  <StatusBadge
+                    label={identityBadge.label}
+                    variant={identityBadge.variant}
+                  />
+                  <StatusBadge label={SPOT_TYPE_LABELS[item.spotType]} variant="system" />
+                </>
               }
-              tags={item.tags.slice(0, 3)}
-              description={item.description}
+              tags={item.tags.slice(0, 2)}
               onPressTop={() => handleSelectSpot(item.id)}
               footer={
                 <View style={styles.cardFooter}>
@@ -168,7 +177,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   header: {
-    gap: theme.spacing.sm,
+    gap: theme.spacing.xs + 2,
   },
   listHeader: {
     marginBottom: theme.spacing.xs,
@@ -177,7 +186,7 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.sm,
   },
   toolbar: {
-    gap: theme.spacing.sm,
+    gap: theme.spacing.xs + 2,
   },
   searchInput: {
     borderRadius: theme.radii.md,
@@ -185,7 +194,7 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.cardBackground,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
     fontSize: 15,
     color: theme.colors.textPrimary,
   },

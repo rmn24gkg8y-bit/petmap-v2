@@ -180,18 +180,18 @@ export default function MySpotsScreen() {
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <SectionHeader
-          eyebrow="内容管理"
+          eyebrow="我的清单"
           title="我的地点"
-          subtitle={`管理你本机保存的地点，共 ${userSpots.length} 个。`}
+          subtitle={`共 ${userSpots.length} 个，支持关键词和状态筛选。`}
           style={styles.listHeader}
         />
 
         {userSpots.length === 0 ? (
           <View style={styles.listEmpty}>
             <EmptyStateCard
-              title="你还没有添加任何地点"
-              description="可以去地图页长按添加一个地点"
-              action={<PrimaryButton label="前往地图添加" onPress={() => router.navigate('/(tabs)')} />}
+              title="暂无我的地点"
+              description="去地图页长按添加一个地点。"
+              action={<PrimaryButton label="去地图添加" onPress={() => router.navigate('/(tabs)')} />}
             />
           </View>
         ) : (
@@ -235,8 +235,17 @@ export default function MySpotsScreen() {
             {groupedSpots.length === 0 ? (
               <View style={styles.listEmpty}>
                 <EmptyStateCard
-                  title="没有符合条件的地点"
-                  description="试试更换关键词，或切换状态筛选。"
+                  title="没有匹配的地点"
+                  description="试试调整关键词或状态筛选。"
+                  action={
+                    <PrimaryButton
+                      label="重置筛选"
+                      onPress={() => {
+                        setSearchQuery('');
+                        setSelectedStatusFilter('all');
+                      }}
+                    />
+                  }
                 />
               </View>
             ) : (
@@ -272,7 +281,7 @@ export default function MySpotsScreen() {
                             <StatusBadge label={SPOT_TYPE_LABELS[item.spotType]} variant="system" />
                           </>
                         }
-                        tags={item.tags.slice(0, 3)}
+                        tags={item.tags.slice(0, 2)}
                         onPressTop={() => handleSelectSpot(item.id)}
                         footer={
                           <View style={styles.cardFooter}>
@@ -356,14 +365,14 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   listHeader: {
-    marginBottom: theme.spacing.sm,
+    marginBottom: theme.spacing.xs + 2,
   },
   listEmpty: {
     marginTop: theme.spacing.sm,
   },
   toolbar: {
-    gap: theme.spacing.sm,
-    marginBottom: theme.spacing.sm,
+    gap: theme.spacing.xs + 2,
+    marginBottom: theme.spacing.xs + 2,
   },
   searchRow: {
     flexDirection: 'row',
@@ -376,7 +385,7 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.cardBackground,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
     fontSize: 15,
     color: theme.colors.textPrimary,
   },
