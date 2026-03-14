@@ -205,8 +205,6 @@ export default function ExploreScreen() {
         contentContainerStyle={styles.content}
         ListHeaderComponent={
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>探索地点</Text>
-
             <View style={styles.searchRow}>
               <TextInput
                 value={searchQuery}
@@ -473,18 +471,14 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.pageBackground,
   },
   content: {
-    padding: theme.spacing.lg,
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.sm,
     paddingBottom: theme.spacing.xl + theme.spacing.sm,
     flexGrow: 1,
   },
   header: {
-    marginBottom: theme.spacing.sm + 2,
-    gap: 10,
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: theme.colors.textPrimary,
+    marginBottom: theme.spacing.xs + 2,
+    gap: 8,
   },
   searchRow: {
     flexDirection: 'row',
@@ -497,16 +491,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.cardBackground,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
     fontSize: 15,
     color: theme.colors.textPrimary,
   },
   clearSearchButton: {
     borderRadius: theme.radii.sm,
     backgroundColor: theme.colors.chipBackground,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
   clearSearchButtonText: {
     fontSize: 13,
@@ -515,17 +509,17 @@ const styles = StyleSheet.create({
   },
   quickEntryRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
   },
   quickEntryButton: {
     flex: 1,
-    minHeight: 46,
+    minHeight: 42,
     borderRadius: theme.radii.md,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.cardBackground,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -541,13 +535,13 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
   },
   stickyBar: {
-    marginBottom: theme.spacing.sm,
+    marginBottom: theme.spacing.xs + 2,
     borderRadius: theme.radii.lg,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.cardBackground,
-    padding: 12,
-    gap: 12,
+    padding: 10,
+    gap: 10,
   },
   toolbarRow: {
     flexDirection: 'row',
@@ -566,10 +560,10 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xs,
   },
   recentSection: {
-    gap: 8,
+    gap: 6,
   },
   recentContent: {
-    gap: 8,
+    gap: 6,
     paddingBottom: 2,
   },
   recentItem: {
@@ -588,19 +582,19 @@ const styles = StyleSheet.create({
   },
   selectorSection: {
     position: 'relative',
-    gap: 6,
+    gap: 5,
     zIndex: 10,
   },
   selectorRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
   },
   selectorColumn: {
     flex: 1,
-    gap: 6,
+    gap: 5,
   },
   selectorButton: {
-    minHeight: 40,
+    minHeight: 38,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -609,8 +603,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.cardBackground,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
   },
   selectorButtonActive: {
     borderColor: theme.colors.primary,
@@ -660,7 +654,7 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
   },
   tagsSection: {
-    gap: 6,
+    gap: 5,
   },
   tagsHeader: {
     flexDirection: 'row',
@@ -683,7 +677,7 @@ const styles = StyleSheet.create({
   },
   filterScrollContent: {
     gap: theme.spacing.xs,
-    paddingVertical: 2,
+    paddingVertical: 1,
   },
   spotCard: {
     marginBottom: theme.spacing.sm,
