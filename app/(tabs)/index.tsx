@@ -134,11 +134,10 @@ export default function TabOneScreen() {
   const halfOffset = Math.max(fullSheetHeight - halfSheetHeight, 0);
   const collapsedOffset = Math.max(fullSheetHeight - collapsedSheetHeight, 0);
   const sheetContainerBottomInset = 0;
-  const sheetContentBottomPadding = sheetStage === 'full' ? 32 : 24;
-  const sheetFooterSpacerHeight = Math.max(
-    tabBarHeight + insets.bottom + (sheetStage === 'full' ? 96 : 156),
-    176
-  );
+  const sheetFooterSafeAreaHeight = tabBarHeight + (sheetStage === 'full' ? 16 : 24);
+  const sheetFooterBaseClearance = Math.max(sheetFooterSafeAreaHeight, insets.bottom + 48);
+  const sheetHiddenBottomHeight = sheetStage === 'half' ? halfOffset : 0;
+  const sheetFooterSpacerHeight = sheetFooterBaseClearance + sheetHiddenBottomHeight;
   const quickActionsBottom = Math.max(sheetVisibleHeight + 16, insets.bottom + 120);
   const sheetTranslateY = useRef(new Animated.Value(collapsedOffset)).current;
   const dragStartRef = useRef(collapsedOffset);
@@ -977,13 +976,10 @@ export default function TabOneScreen() {
           ) : (
             <ScrollView
               style={styles.sheetScroll}
-              contentInset={{ bottom: sheetFooterSpacerHeight }}
               contentContainerStyle={[
                 styles.sheetContent,
                 sheetStage === 'full' ? styles.fullSheetContent : null,
-                { paddingBottom: sheetContentBottomPadding },
               ]}
-              scrollIndicatorInsets={{ bottom: sheetFooterSpacerHeight }}
               showsVerticalScrollIndicator={false}>
               {sheetStage === 'full' ? (
                 <View style={styles.fullHeroSection}>
