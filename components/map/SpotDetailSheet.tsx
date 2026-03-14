@@ -2,13 +2,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { ACTIVITY_COLLECTIONS } from '@/constants/activityCollections';
-import {
-  SPOT_TYPE_LABELS,
-} from '@/constants/spotFormOptions';
-import { getSpotIdentityBadge } from '@/constants/spotIdentity';
-import { theme } from '@/constants/theme';
 import { StatusBadge } from '@/components/ui';
+import { ACTIVITY_COLLECTIONS } from '@/constants/activityCollections';
+import { getSpotIdentityBadge } from '@/constants/spotIdentity';
+import { SPOT_TYPE_LABELS } from '@/constants/spotFormOptions';
+import { theme } from '@/constants/theme';
 import type { Spot } from '@/types/spot';
 
 type SpotDetailSheetProps = {
@@ -64,73 +62,138 @@ export function SpotDetailSheet({
   const relatedActivities = ACTIVITY_COLLECTIONS.filter((activity) =>
     activity.spotIds.includes(selectedSpot.id)
   ).slice(0, 3);
-  const hasCoreMetaInfo =
-    Boolean(selectedSpot.petFriendlyLevel) ||
-    Boolean(selectedSpot.priceLevel);
-  const hasAuxiliaryInfo =
+  const visibleTags = selectedSpot.tags.slice(0, 4);
+  const hiddenTagCount = Math.max(selectedSpot.tags.length - visibleTags.length, 0);
+  const locationHint = [selectedSpot.district, selectedSpot.addressHint]
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .join(' · ');
+  const showLocationHint = Boolean(locationHint) && locationHint !== selectedSpotDisplayAddress;
+  const description = selectedSpot.description.trim();
+  const hasBusinessInfo =
     Boolean(selectedSpot.merchantStatus) ||
     Boolean(selectedSpot.businessHours) ||
     Boolean(selectedSpot.contact);
+  const quickFacts = [
+    { key: 'votes', label: '热度', value: `${selectedSpot.votes}` },
+    selectedSpot.petFriendlyLevel
+      ? {
+          key: 'pet-friendly',
+          label: '友好度',
+          value: PET_FRIENDLY_DISPLAY_LABELS[selectedSpot.petFriendlyLevel],
+        }
+      : null,
+    selectedSpot.priceLevel
+      ? {
+          key: 'price',
+          label: '价格',
+          value: PRICE_LEVEL_DISPLAY_LABELS[selectedSpot.priceLevel],
+        }
+      : null,
+  ].filter(Boolean) as Array<{ key: string; label: string; value: string }>;
+  const businessItems = [
+    selectedSpot.businessHours
+      ? { key: 'hours', label: '营业时间', value: selectedSpot.businessHours }
+      : null,
+    selectedSpot.contact ? { key: 'contact', label: '联系方式', value: selectedSpot.contact } : null,
+    selectedSpot.merchantStatus
+      ? {
+          key: 'merchant',
+          label: '商家状态',
+          value: MERCHANT_STATUS_DISPLAY_LABELS[selectedSpot.merchantStatus],
+        }
+      : null,
+  ].filter(Boolean) as Array<{ key: string; label: string; value: string }>;
+  const shouldShowPhotoSection = selectedSpot.source === 'user' || selectedSpotPhotoUris.length > 0;
 
   return (
     <View style={styles.card}>
       <Text style={styles.cardLabel}>当前选中地点</Text>
-      <Text style={styles.spotTitle}>{selectedSpot.name}</Text>
-      <View style={styles.badgeRow}>
-        <Text style={[styles.badge, styles.typeBadge]}>{SPOT_TYPE_LABELS[selectedSpot.spotType]}</Text>
-        <StatusBadge label={identityBadge.label} variant={identityBadge.variant} />
-        {selectedSpot.verified ? <Text style={[styles.badge, styles.verifiedBadge]}>已认证</Text> : null}
+
+      <View style={styles.heroHeader}>
+        <View style={styles.heroCopy}>
+          <Text style={styles.spotTitle}>{selectedSpot.name}</Text>
+          <View style={styles.badgeRow}>
+            <Text style={[styles.badge, styles.typeBadge]}>{SPOT_TYPE_LABELS[selectedSpot.spotType]}</Text>
+            <StatusBadge label={identityBadge.label} variant={identityBadge.variant} />
+            {selectedSpot.verified ? <Text style={[styles.badge, styles.verifiedBadge]}>已认证</Text> : null}
+          </View>
+        </View>
+
+        <Pressable
+          onPress={onToggleFavorite}
+          style={[styles.favoriteButton, isFavorite ? styles.favoriteButtonActive : null]}>
+          <Ionicons
+            name={isFavorite ? 'heart' : 'heart-outline'}
+            size={16}
+            color={isFavorite ? '#1D4ED8' : theme.colors.textSecondary}
+          />
+          <Text style={[styles.favoriteButtonText, isFavorite ? styles.favoriteButtonTextActive : null]}>
+            {isFavorite ? '已收藏' : '收藏'}
+          </Text>
+        </Pressable>
       </View>
-      <View style={styles.addressBlock}>
+
+      <View style={styles.primaryMetaBlock}>
         <Text style={styles.spotMetaText}>{selectedSpotDisplayAddress}</Text>
+        {showLocationHint ? <Text style={styles.spotSubMetaText}>{locationHint}</Text> : null}
       </View>
-      <View style={styles.quickActionsRow}>
-        <Pressable onPress={onOpenNavigation} style={styles.quickActionChip}>
-          <Ionicons name="navigate-outline" size={15} color="#1F2937" />
-          <Text style={styles.quickActionChipText}>去这里</Text>
+
+      <View style={styles.primaryActionRow}>
+        <Pressable onPress={onOpenNavigation} style={[styles.primaryActionButton, styles.actionButtonWide]}>
+          <Ionicons name="navigate-outline" size={16} color="#FFFFFF" />
+          <Text style={styles.primaryActionButtonText}>去这里</Text>
         </Pressable>
-        <Pressable onPress={onShareSpotInfo} style={styles.quickActionChip}>
-          <Ionicons name="share-social-outline" size={15} color="#1F2937" />
-          <Text style={styles.quickActionChipText}>分享地点</Text>
+        <Pressable onPress={onShareSpotInfo} style={styles.secondaryActionButton}>
+          <Ionicons name="share-social-outline" size={15} color={theme.colors.textPrimary} />
+          <Text style={styles.secondaryActionButtonText}>分享</Text>
         </Pressable>
       </View>
-      {hasCoreMetaInfo ? (
-        <View style={styles.infoRow}>
-          {selectedSpot.petFriendlyLevel ? (
-            <Text style={styles.infoChip}>
-              友好度：{PET_FRIENDLY_DISPLAY_LABELS[selectedSpot.petFriendlyLevel]}
-            </Text>
-          ) : null}
-          {selectedSpot.priceLevel ? (
-            <Text style={styles.infoChip}>
-              价格：{PRICE_LEVEL_DISPLAY_LABELS[selectedSpot.priceLevel]}
-            </Text>
-          ) : null}
+
+      {quickFacts.length > 0 ? (
+        <View style={styles.quickFactsRow}>
+          {quickFacts.map((item) => (
+            <View key={item.key} style={styles.quickFactChip}>
+              <Text style={styles.quickFactLabel}>{item.label}</Text>
+              <Text style={styles.quickFactValue}>{item.value}</Text>
+            </View>
+          ))}
         </View>
       ) : null}
-      {selectedSpot.tags.length > 0 ? (
+
+      {visibleTags.length > 0 ? (
         <View style={styles.tagRow}>
-          {selectedSpot.tags.map((tag) => (
+          {visibleTags.map((tag) => (
             <Text key={tag} style={styles.tagChip}>
               {tag}
             </Text>
           ))}
+          {hiddenTagCount > 0 ? <Text style={styles.tagMoreText}>+{hiddenTagCount}</Text> : null}
         </View>
       ) : null}
-      <View style={styles.photoSection}>
-        <View style={styles.photoSectionHeader}>
-          <Text style={styles.photoSectionTitle}>图片预览</Text>
-          {selectedSpot.source === 'user' ? (
-            <Pressable onPress={onPickSpotPhoto} style={styles.photoAddButton}>
-              <Ionicons name="add" size={14} color="#1D4ED8" />
-              <Text style={styles.photoAddButtonText}>添加图片</Text>
-            </Pressable>
-          ) : (
-            <Text style={styles.photoSectionHint}>即将支持</Text>
-          )}
+
+      {description ? (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>地点简介</Text>
+          </View>
+          <Text style={styles.descriptionText}>{description}</Text>
         </View>
-        {selectedSpot.source === 'user' ? (
-          selectedSpotPhotoUris.length > 0 ? (
+      ) : null}
+
+      {shouldShowPhotoSection ? (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>图片</Text>
+            {selectedSpot.source === 'user' ? (
+              <Pressable onPress={onPickSpotPhoto} style={styles.sectionLinkButton}>
+                <Ionicons name="add" size={14} color={theme.colors.primary} />
+                <Text style={styles.sectionLinkButtonText}>添加图片</Text>
+              </Pressable>
+            ) : null}
+          </View>
+
+          {selectedSpotPhotoUris.length > 0 ? (
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -138,81 +201,30 @@ export function SpotDetailSheet({
               {selectedSpotPhotoUris.map((uri) => (
                 <View key={`${selectedSpot.id}-${uri}`} style={styles.userPhotoCard}>
                   <Image source={{ uri }} style={styles.userPhotoImage} />
-                  <Pressable onPress={() => onRemoveSpotPhoto(uri)} style={styles.photoRemoveButton}>
-                    <Ionicons name="close" size={12} color="#FFFFFF" />
-                  </Pressable>
+                  {selectedSpot.source === 'user' ? (
+                    <Pressable onPress={() => onRemoveSpotPhoto(uri)} style={styles.photoRemoveButton}>
+                      <Ionicons name="close" size={12} color="#FFFFFF" />
+                    </Pressable>
+                  ) : null}
                 </View>
               ))}
             </ScrollView>
-          ) : (
+          ) : selectedSpot.source === 'user' ? (
             <Pressable onPress={onPickSpotPhoto} style={styles.photoEmptyCard}>
-              <Ionicons name="images-outline" size={18} color="#6B7280" />
+              <Ionicons name="images-outline" size={18} color={theme.colors.textTertiary} />
               <Text style={styles.photoEmptyText}>还没有图片，点击添加第一张</Text>
             </Pressable>
-          )
-        ) : (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.photoRow}>
-            {[1, 2, 3].map((item) => (
-              <View key={item} style={styles.photoPlaceholderCard}>
-                <Text style={styles.photoPlaceholderIcon}>+</Text>
-                <Text style={styles.photoPlaceholderText}>未来可展示地点图片</Text>
-              </View>
-            ))}
-          </ScrollView>
-        )}
-      </View>
-      {hasAuxiliaryInfo ? (
-        <View style={styles.metaList}>
-          {selectedSpot.merchantStatus ? (
-            <Text style={styles.metaItem}>
-              商家状态：{MERCHANT_STATUS_DISPLAY_LABELS[selectedSpot.merchantStatus]}
-            </Text>
           ) : null}
-          {selectedSpot.businessHours ? (
-            <Text style={styles.metaItem}>营业时间：{selectedSpot.businessHours}</Text>
-          ) : null}
-          {selectedSpot.contact ? <Text style={styles.metaItem}>联系方式：{selectedSpot.contact}</Text> : null}
         </View>
       ) : null}
-      {shouldShowPlatformMaintenanceHint ? (
-        <View style={styles.platformHintSection}>
-          <View style={styles.platformStateRow}>
-            <Text style={styles.platformStateChip}>信息持续整理中</Text>
-          </View>
-          <Text style={styles.platformHintText}>
-            该地点由平台整理维护，欢迎反馈修正；商家认领后可支持信息更新。
-          </Text>
-          <View style={styles.platformHintActions}>
-            <Text style={styles.platformComingSoonChip}>商家认领（即将支持）</Text>
-            <Pressable
-              onPress={() =>
-                router.push({
-                  pathname: '/feedback',
-                  params: {
-                    type: 'spot',
-                    contextType: 'spot',
-                    spotId: selectedSpot.id,
-                    spotName: selectedSpot.name,
-                    spotAddress: selectedSpotDisplayAddress,
-                    spotIdentityLabel: identityBadge.label,
-                  },
-                })
-              }
-              style={styles.platformFeedbackButton}>
-              <Text style={styles.platformFeedbackButtonText}>反馈地点信息</Text>
-            </Pressable>
-          </View>
-        </View>
-      ) : null}
+
       {relatedActivities.length > 0 ? (
-        <View style={styles.relatedActivitiesSection}>
-          <View style={styles.relatedActivitiesHeader}>
-            <Text style={styles.relatedActivitiesTitle}>相关活动 / 专题</Text>
-            <Text style={styles.relatedActivitiesCount}>{relatedActivities.length} 条</Text>
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>相关活动</Text>
+            <Text style={styles.sectionCaption}>{relatedActivities.length} 条</Text>
           </View>
+
           <View style={styles.relatedActivitiesList}>
             {relatedActivities.map((activity) => (
               <Pressable
@@ -236,40 +248,83 @@ export function SpotDetailSheet({
           </View>
         </View>
       ) : null}
-      <Text style={styles.cardDescription}>
-        {selectedSpot.description || '暂无地点简介，后续可以继续补充。'}
-      </Text>
-      <View style={styles.detailMetaRow}>
-        <Text style={styles.detailMetaLabel}>热度</Text>
-        <Text style={styles.votes}>{selectedSpot.votes} votes</Text>
-      </View>
 
-      <View style={styles.actions}>
-        <Pressable onPress={onToggleFavorite} style={styles.primaryActionButton}>
-          <Text style={styles.primaryActionText}>{isFavorite ? '已收藏' : '收藏'}</Text>
-        </Pressable>
+      {hasBusinessInfo ? (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>补充信息</Text>
+          </View>
+          <View style={styles.detailList}>
+            {businessItems.map((item) => (
+              <View key={item.key} style={styles.detailItem}>
+                <Text style={styles.detailItemLabel}>{item.label}</Text>
+                <Text style={styles.detailItemValue}>{item.value}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
 
-        <Pressable onPress={onClearSelected} style={styles.secondaryButton}>
-          <Text style={styles.secondaryButtonText}>清空选择</Text>
-        </Pressable>
-
-        {selectedSpot.source === 'user' && selectedSpot.submissionStatus !== 'pending_review' ? (
-          <Pressable onPress={onSubmitForReview} style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonText}>提交审核</Text>
+      {shouldShowPlatformMaintenanceHint ? (
+        <View style={[styles.section, styles.platformSection]}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>信息维护</Text>
+          </View>
+          <View style={styles.platformStateRow}>
+            <Text style={styles.platformStateChip}>平台整理中</Text>
+            <Text style={styles.platformComingSoonChip}>商家认领即将支持</Text>
+          </View>
+          <Text style={styles.platformHintText}>
+            该地点由平台整理维护，欢迎反馈修正；商家认领后可支持信息更新。
+          </Text>
+          <Pressable
+            onPress={() =>
+              router.push({
+                pathname: '/feedback',
+                params: {
+                  type: 'spot',
+                  contextType: 'spot',
+                  spotId: selectedSpot.id,
+                  spotName: selectedSpot.name,
+                  spotAddress: selectedSpotDisplayAddress,
+                  spotIdentityLabel: identityBadge.label,
+                },
+              })
+            }
+            style={styles.platformFeedbackButton}>
+            <Text style={styles.platformFeedbackButtonText}>反馈地点信息</Text>
           </Pressable>
-        ) : null}
+        </View>
+      ) : null}
 
-        {selectedSpot.source === 'user' ? (
-          <Pressable onPress={onEditSpot} style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonText}>编辑地点</Text>
-          </Pressable>
-        ) : null}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>更多操作</Text>
+        </View>
 
-        {selectedSpot.source === 'user' ? (
-          <Pressable onPress={onDeleteSpot} style={styles.dangerButton}>
-            <Text style={styles.dangerButtonText}>删除地点</Text>
+        <View style={styles.secondaryActionsGroup}>
+          <Pressable onPress={onClearSelected} style={styles.ghostActionButton}>
+            <Text style={styles.ghostActionButtonText}>清空选择</Text>
           </Pressable>
-        ) : null}
+
+          {selectedSpot.source === 'user' && selectedSpot.submissionStatus !== 'pending_review' ? (
+            <Pressable onPress={onSubmitForReview} style={styles.ghostActionButton}>
+              <Text style={styles.ghostActionButtonText}>提交审核</Text>
+            </Pressable>
+          ) : null}
+
+          {selectedSpot.source === 'user' ? (
+            <Pressable onPress={onEditSpot} style={styles.ghostActionButton}>
+              <Text style={styles.ghostActionButtonText}>编辑地点</Text>
+            </Pressable>
+          ) : null}
+
+          {selectedSpot.source === 'user' ? (
+            <Pressable onPress={onDeleteSpot} style={styles.dangerButton}>
+              <Text style={styles.dangerButtonText}>删除地点</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </View>
     </View>
   );
@@ -282,7 +337,7 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.cardBackground,
     paddingTop: theme.spacing.sm,
-    paddingBottom: theme.spacing.sm,
+    paddingBottom: theme.spacing.md,
     paddingHorizontal: theme.spacing.md,
     ...theme.shadows.card,
   },
@@ -293,8 +348,17 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     color: theme.colors.textSecondary,
   },
-  spotTitle: {
+  heroHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: theme.spacing.sm,
     marginTop: 8,
+  },
+  heroCopy: {
+    flex: 1,
+  },
+  spotTitle: {
     fontSize: 30,
     fontWeight: '800',
     color: theme.colors.textPrimary,
@@ -303,7 +367,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: theme.spacing.xs,
-    marginTop: 12,
+    marginTop: 10,
   },
   badge: {
     borderRadius: theme.radii.pill,
@@ -320,116 +384,208 @@ const styles = StyleSheet.create({
     backgroundColor: '#DCFCE7',
     color: theme.colors.success,
   },
-  addressBlock: {
-    marginTop: 10,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surfaceMuted,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-  },
-  infoRow: {
+  favoriteButton: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.xs,
-    marginTop: 10,
-  },
-  infoChip: {
-    borderRadius: theme.radii.pill,
-    backgroundColor: theme.colors.surfaceMuted,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    fontSize: 12,
-    color: theme.colors.textSecondary,
-  },
-  metaList: {
-    marginTop: 8,
+    alignItems: 'center',
     gap: 6,
-  },
-  metaItem: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: theme.colors.textSecondary,
-  },
-  platformHintSection: {
-    marginTop: 10,
-    borderRadius: theme.radii.md,
+    borderRadius: theme.radii.pill,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surfaceMuted,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 9,
-    gap: 8,
   },
-  platformHintText: {
+  favoriteButtonActive: {
+    borderColor: '#D7E5FF',
+    backgroundColor: theme.colors.primarySoft,
+  },
+  favoriteButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.textSecondary,
+  },
+  favoriteButtonTextActive: {
+    color: theme.colors.primary,
+  },
+  primaryMetaBlock: {
+    marginTop: 12,
+    gap: 4,
+  },
+  spotMetaText: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: theme.colors.textSecondary,
+  },
+  spotSubMetaText: {
     fontSize: 12,
     lineHeight: 17,
-    color: theme.colors.textSecondary,
+    color: theme.colors.textTertiary,
   },
-  platformStateRow: {
+  primaryActionRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    gap: theme.spacing.xs,
+    marginTop: 14,
   },
-  platformStateChip: {
-    borderRadius: theme.radii.pill,
-    borderWidth: 1,
-    borderColor: '#DBEAFE',
-    backgroundColor: '#EFF6FF',
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    fontSize: 11,
+  primaryActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: theme.radii.md,
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  actionButtonWide: {
+    flex: 1,
+  },
+  primaryActionButtonText: {
+    fontSize: 13,
     fontWeight: '700',
-    color: '#1D4ED8',
+    color: '#FFFFFF',
   },
-  platformHintActions: {
+  secondaryActionButton: {
+    minWidth: 88,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceMuted,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  secondaryActionButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.colors.textPrimary,
+  },
+  quickFactsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: theme.spacing.xs,
+    marginTop: 12,
   },
-  platformComingSoonChip: {
+  quickFactChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     borderRadius: theme.radii.pill,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    backgroundColor: theme.colors.cardBackground,
+    backgroundColor: theme.colors.surfaceMuted,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    fontSize: 12,
-    color: theme.colors.textSecondary,
-    fontWeight: '600',
   },
-  platformFeedbackButton: {
+  quickFactLabel: {
+    fontSize: 12,
+    color: theme.colors.textTertiary,
+  },
+  quickFactValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.textPrimary,
+  },
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+    marginTop: 12,
+  },
+  tagChip: {
     borderRadius: theme.radii.pill,
-    borderWidth: 1,
-    borderColor: '#D7E5FF',
     backgroundColor: theme.colors.primarySoft,
     paddingHorizontal: 10,
     paddingVertical: 6,
-  },
-  platformFeedbackButtonText: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
     color: theme.colors.primary,
   },
-  relatedActivitiesSection: {
-    marginTop: 12,
-    gap: 8,
+  tagMoreText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: theme.colors.textTertiary,
   },
-  relatedActivitiesHeader: {
+  section: {
+    marginTop: 18,
+    paddingTop: theme.spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.divider,
+    gap: 10,
+  },
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: theme.spacing.xs,
   },
-  relatedActivitiesTitle: {
+  sectionTitle: {
     fontSize: 14,
     fontWeight: '700',
     color: theme.colors.textPrimary,
   },
-  relatedActivitiesCount: {
+  sectionCaption: {
     fontSize: 12,
+    color: theme.colors.textSecondary,
+  },
+  sectionLinkButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  sectionLinkButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.primary,
+  },
+  descriptionText: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: theme.colors.textSecondary,
+  },
+  photoRow: {
+    gap: theme.spacing.sm,
+  },
+  userPhotoCard: {
+    width: 156,
+    height: 112,
+    borderRadius: theme.radii.md,
+    overflow: 'hidden',
+    backgroundColor: theme.colors.surfaceMuted,
+    position: 'relative',
+  },
+  userPhotoImage: {
+    width: '100%',
+    height: '100%',
+  },
+  photoRemoveButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(11, 19, 36, 0.65)',
+  },
+  photoEmptyCard: {
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderStyle: 'dashed',
+    backgroundColor: theme.colors.surfaceMuted,
+    paddingHorizontal: 14,
+    paddingVertical: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  photoEmptyText: {
+    fontSize: 13,
     color: theme.colors.textSecondary,
   },
   relatedActivitiesList: {
@@ -460,215 +616,105 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     color: theme.colors.textSecondary,
   },
-  spotMetaText: {
-    fontSize: 12,
-    lineHeight: 16,
-    color: theme.colors.textSecondary,
+  detailList: {
+    gap: 8,
   },
-  quickActionsRow: {
+  detailItem: {
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceMuted,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 4,
+  },
+  detailItemLabel: {
+    fontSize: 12,
+    color: theme.colors.textTertiary,
+  },
+  detailItemValue: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: theme.colors.textPrimary,
+  },
+  platformSection: {
+    gap: 12,
+  },
+  platformStateRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: theme.spacing.xs,
-    marginTop: 10,
   },
-  quickActionChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+  platformStateChip: {
     borderRadius: theme.radii.pill,
-    backgroundColor: theme.colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  platformComingSoonChip: {
+    borderRadius: theme.radii.pill,
     borderWidth: 1,
     borderColor: theme.colors.border,
+    backgroundColor: theme.colors.cardBackground,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    fontSize: 11,
+    fontWeight: '600',
+    color: theme.colors.textSecondary,
+  },
+  platformHintText: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: theme.colors.textSecondary,
+  },
+  platformFeedbackButton: {
+    alignSelf: 'flex-start',
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+    borderColor: '#D7E5FF',
+    backgroundColor: theme.colors.primarySoft,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  quickActionChipText: {
+  platformFeedbackButtonText: {
     fontSize: 12,
-    fontWeight: '600',
-    color: theme.colors.textPrimary,
+    fontWeight: '700',
+    color: theme.colors.primary,
   },
-  tagRow: {
+  secondaryActionsGroup: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: theme.spacing.xs,
-    marginTop: 10,
   },
-  tagChip: {
-    borderRadius: theme.radii.pill,
-    backgroundColor: theme.colors.primarySoft,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    fontSize: 12,
+  ghostActionButton: {
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceMuted,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  ghostActionButtonText: {
+    fontSize: 13,
     fontWeight: '600',
-    color: theme.colors.primary,
-  },
-  photoSection: {
-    marginTop: 18,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.divider,
-    paddingTop: theme.spacing.md,
-  },
-  photoSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  photoSectionTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: theme.colors.textPrimary,
-  },
-  photoAddButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderRadius: theme.radii.pill,
-    backgroundColor: theme.colors.primarySoft,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  photoAddButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.primary,
-  },
-  photoSectionHint: {
-    fontSize: 12,
-    color: theme.colors.textTertiary,
-  },
-  photoRow: {
-    gap: 12,
-    paddingTop: 12,
-    paddingBottom: 2,
-  },
-  photoPlaceholderCard: {
-    width: 152,
-    height: 110,
-    borderRadius: theme.radii.md,
-    backgroundColor: theme.colors.surfaceMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 14,
-  },
-  photoPlaceholderIcon: {
-    fontSize: 24,
-    fontWeight: '300',
-    color: theme.colors.textSecondary,
-  },
-  photoPlaceholderText: {
-    marginTop: 10,
-    fontSize: 12,
-    lineHeight: 18,
-    textAlign: 'center',
-    color: theme.colors.textTertiary,
-  },
-  photoEmptyCard: {
-    marginTop: 12,
-    borderRadius: theme.radii.md,
-    backgroundColor: theme.colors.surfaceMuted,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    minHeight: 110,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-  },
-  photoEmptyText: {
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-    textAlign: 'center',
-  },
-  userPhotoCard: {
-    width: 152,
-    height: 110,
-    borderRadius: theme.radii.md,
-    overflow: 'hidden',
-    backgroundColor: '#E5E7EB',
-  },
-  userPhotoImage: {
-    width: '100%',
-    height: '100%',
-  },
-  photoRemoveButton: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 22,
-    height: 22,
-    borderRadius: 999,
-    backgroundColor: 'rgba(17, 24, 39, 0.72)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardDescription: {
-    marginTop: 12,
-    fontSize: 15,
-    lineHeight: 22,
-    color: theme.colors.textSecondary,
-  },
-  detailMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 16,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.divider,
-  },
-  detailMetaLabel: {
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-  },
-  votes: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: theme.colors.textPrimary,
-  },
-  actions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.sm,
-    marginTop: 16,
-  },
-  primaryActionButton: {
-    alignSelf: 'flex-start',
-    borderRadius: theme.radii.md,
-    backgroundColor: theme.colors.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  primaryActionText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  secondaryButton: {
-    alignSelf: 'flex-start',
-    marginTop: theme.spacing.md,
-    borderRadius: theme.radii.md,
-    backgroundColor: theme.colors.surfaceMuted,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  secondaryButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
     color: theme.colors.textPrimary,
   },
   dangerButton: {
-    alignSelf: 'flex-start',
-    marginTop: theme.spacing.md,
     borderRadius: theme.radii.md,
+    borderWidth: 1,
+    borderColor: '#FECACA',
     backgroundColor: '#FEF2F2',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   dangerButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
     color: theme.colors.danger,
   },
 });
