@@ -39,6 +39,7 @@ export default function TabLayout() {
         name="explore"
         options={{
           title: 'Explore',
+          headerShown: false,
           tabBarIcon: ({ color }) => (
             <SymbolView
               name={{
@@ -50,7 +51,6 @@ export default function TabLayout() {
               size={28}
             />
           ),
-          headerTitle: 'Explore',
         }}
       />
       <Tabs.Screen

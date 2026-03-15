@@ -1,5 +1,7 @@
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { type ComponentProps, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   FlatList,
   Image,
@@ -10,184 +12,235 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   SPOT_TYPE_LABELS,
   SPOT_TYPE_OPTIONS,
 } from '@/constants/spotFormOptions';
-import { getSpotIdentityBadge } from '@/constants/spotIdentity';
-import {
-  EmptyStateCard,
-  PrimaryButton,
-  StatusBadge,
-  TagChip,
-} from '@/components/ui';
+import { EmptyStateCard, PrimaryButton } from '@/components/ui';
 import { theme } from '@/constants/theme';
 import { usePetMapStore } from '@/store/petmap-store';
 import { formatDistance, getDistanceMeters } from '@/utils/distance';
 
-const PET_FRIENDLY_LABELS = {
-  high: '宠物友好高',
-  medium: '宠物友好中',
-  low: '宠物友好待确认',
-} as const;
-
+const HERO_TAGS = ['全部', '安静', '草坪', '江边', '奔跑'];
 const SORT_OPTIONS = [
   { label: '热门', value: 'popular' as const },
   { label: '名称', value: 'name' as const },
   { label: '距离', value: 'distance' as const },
 ];
 
+const TYPE_BADGE_COLORS = {
+  park: '#2B6B2B',
+  cafe: '#5D3114',
+  hospital: '#5A2F52',
+  store: '#344A7A',
+  indoor: '#2C5E6E',
+  other: '#46526B',
+} as const;
+
 type ExploreSpot = ReturnType<typeof usePetMapStore>['filteredSpots'][number];
-type ExploreBadge = {
-  label: string;
-  variant: ComponentProps<typeof StatusBadge>['variant'];
-};
+type ExploreMenu = 'sort' | 'district' | 'type' | null;
+type SourceKind = 'platform' | 'user' | 'local';
 
-function getExploreStatusBadge(spot: ExploreSpot) {
-  if (spot.submissionStatus === 'pending_review') {
-    return { label: '审核中', variant: 'pending' as const };
+function getDisplayAddress(spot: ExploreSpot) {
+  return spot.addressHint?.trim() || spot.formattedAddress?.trim() || '地址待补充';
+}
+
+function getSourceInfo(spot: ExploreSpot): { label: string; kind: SourceKind } {
+  if (spot.source !== 'user') {
+    return {
+      label: '平台整理',
+      kind: 'platform',
+    };
   }
 
-  if (spot.verified) {
-    return { label: '已发布', variant: 'favorite' as const };
+  if (spot.submissionStatus === 'local') {
+    return {
+      label: '本地保存',
+      kind: 'local',
+    };
   }
 
-  if (spot.source === 'user') {
-    return { label: '待提交', variant: 'local' as const };
+  return {
+    label: '用户提供',
+    kind: 'user',
+  };
+}
+
+function getSourceIcon(kind: SourceKind) {
+  if (kind === 'platform') {
+    return { name: 'layers-outline' as const, color: '#ED8422' };
   }
 
-  return null;
+  if (kind === 'local') {
+    return { name: 'download-outline' as const, color: '#2F2F2F' };
+  }
+
+  return { name: 'person-outline' as const, color: '#67A735' };
 }
 
 function ExploreSpotCard({
   spot,
-  address,
-  badges,
-  tags,
-  extraTagCount,
   distanceText,
-  metaText,
-  petFriendlyText,
   onPress,
 }: {
   spot: ExploreSpot;
-  address: string;
-  badges: ExploreBadge[];
-  tags: string[];
-  extraTagCount: number;
   distanceText: string;
-  metaText: string;
-  petFriendlyText?: string;
   onPress: () => void;
 }) {
+  const sourceInfo = getSourceInfo(spot);
+  const sourceIcon = getSourceIcon(sourceInfo.kind);
+  const district = spot.district.trim() || '未知区域';
+  const address = getDisplayAddress(spot);
+  const visibleTags = spot.tags.slice(0, 4);
+  const typeColor = TYPE_BADGE_COLORS[spot.spotType] ?? TYPE_BADGE_COLORS.other;
+
   return (
     <Pressable onPress={onPress} style={styles.spotCard}>
-      <View style={styles.spotCardTop}>
+      <View style={styles.spotMediaLayer}>
         {spot.photoUris?.[0] ? (
           <Image source={{ uri: spot.photoUris[0] }} style={styles.spotImage} />
         ) : (
           <View style={styles.spotImagePlaceholder}>
-            <Text style={styles.spotImagePlaceholderText}>暂无图片</Text>
+            <View style={styles.spotPlaceholderGlowA} />
+            <View style={styles.spotPlaceholderGlowB} />
+            <View style={styles.spotPlaceholderContent}>
+              <View style={styles.spotPlaceholderIconWrap}>
+                <Ionicons name="image-outline" size={16} color="#6A6863" />
+              </View>
+              <Text style={styles.spotPlaceholderTitle}>PetMap Spot</Text>
+              <Text style={styles.spotPlaceholderSubtitle}>暂无图片</Text>
+            </View>
           </View>
         )}
+      </View>
 
-        <View style={styles.spotMeta}>
-          <View style={styles.spotHeaderRow}>
-            <Text style={styles.spotTitle} numberOfLines={1}>
-              {spot.name}
-            </Text>
-            <View style={styles.metaPill}>
-              <Text style={styles.metaPillText}>{distanceText}</Text>
+      <LinearGradient
+        pointerEvents="none"
+        colors={[
+          'rgba(0,0,0,0)',
+          'rgba(0,0,0,0.12)',
+          'rgba(0,0,0,0.3)',
+          'rgba(0,0,0,0.6)',
+        ]}
+        locations={[0, 0.44, 0.72, 1]}
+        style={styles.spotGradientLayer}
+      />
+
+      <View style={styles.spotCardContent}>
+        <View style={[styles.typeBadge, { backgroundColor: typeColor }]}>
+          <Text style={styles.typeBadgeText}>{SPOT_TYPE_LABELS[spot.spotType]}</Text>
+        </View>
+
+        <View style={styles.spotBottomContent}>
+          <View>
+            <View style={styles.sourceRow}>
+              <Ionicons name={sourceIcon.name} size={11} color={sourceIcon.color} />
+              <Text
+                style={[
+                  styles.sourceText,
+                  sourceInfo.kind === 'platform' ? styles.sourceTextPlatform : null,
+                  sourceInfo.kind === 'user' ? styles.sourceTextUser : null,
+                  sourceInfo.kind === 'local' ? styles.sourceTextLocal : null,
+                ]}>
+                {sourceInfo.label}
+              </Text>
+            </View>
+
+            <View style={styles.titleRow}>
+              <Text style={styles.spotTitle} numberOfLines={1}>
+                {spot.name}
+              </Text>
+              <Text style={styles.distanceText} numberOfLines={1}>
+                {distanceText}
+              </Text>
+            </View>
+
+            <View style={styles.addressRow}>
+              <Text style={styles.districtText} numberOfLines={1}>
+                {district}
+              </Text>
+              <Text style={styles.addressDot}>·</Text>
+              <Text style={styles.addressDetailText} numberOfLines={1}>
+                {address}
+              </Text>
+            </View>
+
+            <View style={styles.tagsRow}>
+              {visibleTags.length > 0
+                ? visibleTags.map((tag) => (
+                    <View key={`${spot.id}-${tag}`} style={styles.tagPill}>
+                      <Text style={styles.tagText} numberOfLines={1}>
+                        {tag}
+                      </Text>
+                    </View>
+                  ))
+                : null}
             </View>
           </View>
 
-          <Text style={styles.spotAddress} numberOfLines={1}>
-            {address}
-          </Text>
-
-          <View style={styles.metaRow}>
-            <Text style={styles.metaText}>{metaText}</Text>
-            {petFriendlyText ? <Text style={styles.metaText}>{petFriendlyText}</Text> : null}
+          <View style={styles.heatRow}>
+            <Ionicons name="flame-outline" size={13} color="#ED8422" />
+            <Text style={styles.heatText}>{spot.votes}</Text>
           </View>
         </View>
-      </View>
-
-      <View style={styles.spotFooter}>
-        {badges.length > 0 ? (
-          <View style={styles.badgeRow}>
-            {badges.map((badge) => (
-              <StatusBadge key={`${spot.id}-${badge.label}`} label={badge.label} variant={badge.variant} />
-            ))}
-          </View>
-        ) : null}
-
-        {tags.length > 0 ? (
-          <View style={styles.tagsRow}>
-            {tags.map((tag) => (
-              <TagChip key={`${spot.id}-${tag}`} label={tag} compact />
-            ))}
-            {extraTagCount > 0 ? (
-              <View style={styles.moreTagPill}>
-                <Text style={styles.moreTagPillText}>+{extraTagCount}</Text>
-              </View>
-            ) : null}
-          </View>
-        ) : null}
       </View>
     </Pressable>
   );
 }
 
-type ExploreListItem =
-  | { type: 'sticky'; key: 'sticky' }
-  | {
-      type: 'spot';
-      key: string;
-      spot: ExploreSpot;
-    };
-
 export default function ExploreScreen() {
+  const insets = useSafeAreaInsets();
   const {
     filteredSpots,
-    allTags,
-    favoriteCount,
     searchQuery,
     selectedTags,
     selectedSpotType,
-    showFavoritesOnly,
-    showUserOnly,
     sortMode,
     userLoc,
-    userSpots,
     setSelectedSpot,
     setSearchQuery,
     toggleSelectedTag,
     clearSelectedTags,
     setSelectedSpotType,
-    setShowFavoritesOnly,
-    setShowUserOnly,
     setSortMode,
     resetExploreFilters,
-    isFavorite,
-    recentViewedSpots,
   } = usePetMapStore();
-  const [openMenu, setOpenMenu] = useState<'sort' | 'type' | null>(null);
 
-  const listData = useMemo<ExploreListItem[]>(
-    () => [
-      { type: 'sticky', key: 'sticky' },
-      ...filteredSpots.map((spot) => ({
-        type: 'spot' as const,
-        key: spot.id,
-        spot,
-      })),
-    ],
-    [filteredSpots]
-  );
+  const [openMenu, setOpenMenu] = useState<ExploreMenu>(null);
+  const [selectedDistrict, setSelectedDistrict] = useState<string>('全部');
+  const [hasPickedSort, setHasPickedSort] = useState(false);
 
-  const selectedSortLabel = SORT_OPTIONS.find((option) => option.value === sortMode)?.label ?? '热门';
-  const selectedTypeLabel = selectedSpotType ? SPOT_TYPE_LABELS[selectedSpotType] : '全部';
+  const districtOptions = useMemo(() => {
+    const values = Array.from(
+      new Set(
+        filteredSpots
+          .map((spot) => spot.district.trim())
+          .filter(Boolean)
+      )
+    ).slice(0, 10);
+
+    return ['全部', ...values];
+  }, [filteredSpots]);
+
+  const visibleSpots = useMemo(() => {
+    if (selectedDistrict === '全部') {
+      return filteredSpots;
+    }
+
+    return filteredSpots.filter((spot) => spot.district.trim() === selectedDistrict);
+  }, [filteredSpots, selectedDistrict]);
+  const selectedSortLabel =
+    SORT_OPTIONS.find((option) => option.value === sortMode)?.label ?? '热门';
+  const selectedTypeLabel = selectedSpotType ? SPOT_TYPE_LABELS[selectedSpotType] : '';
+  const sortSelectorLabel = hasPickedSort ? selectedSortLabel : '排序';
+  const districtSelectorLabel = selectedDistrict === '全部' ? '区域' : selectedDistrict;
+  const typeSelectorLabel = selectedSpotType ? selectedTypeLabel : '类型';
+
+  const heroTopPadding = insets.top + 12;
+  const messageButtonTop = insets.top + 10;
+  const mascotTopOffset = Math.max(4, Math.round(insets.top * 0.1));
 
   function handleSelectSpot(id: string) {
     setSelectedSpot(id);
@@ -195,272 +248,195 @@ export default function ExploreScreen() {
     router.navigate('/(tabs)');
   }
 
+  function handleHeroTagPress(tag: string) {
+    if (tag === '全部') {
+      clearSelectedTags();
+      return;
+    }
+
+    toggleSelectedTag(tag);
+  }
+
   return (
     <View style={styles.container}>
-      <FlatList
-        data={listData}
-        keyExtractor={(item) => item.key}
-        stickyHeaderIndices={[1]}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.content}
-        ListHeaderComponent={
-          <View style={styles.header}>
-            <View style={styles.searchRow}>
-              <TextInput
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                placeholder="搜索地点、区域、标签"
-                style={styles.searchInput}
-                onFocus={() => setOpenMenu(null)}
-              />
-              {searchQuery ? (
-                <Pressable onPress={() => setSearchQuery('')} style={styles.clearSearchButton}>
-                  <Text style={styles.clearSearchButtonText}>清空</Text>
-                </Pressable>
-              ) : null}
+      <View style={[styles.hero, { paddingTop: heroTopPadding }]}>
+        <View style={[styles.heroMascotArea, { marginTop: mascotTopOffset }]}>
+          <View style={styles.heroMascotEarLeft} />
+          <View style={styles.heroMascotEarRight} />
+          <View style={styles.heroMascotFace}>
+            <View style={styles.heroMascotEyeRow}>
+              <View style={styles.heroMascotEye} />
+              <View style={styles.heroMascotEye} />
             </View>
-
-            <View style={styles.quickEntryRow}>
-              <Pressable onPress={() => router.push('/my-favorites')} style={styles.quickEntryButton}>
-                <Text style={styles.quickEntryLabel}>我的收藏</Text>
-                <Text style={styles.quickEntryMeta}>{favoriteCount}</Text>
-              </Pressable>
-              <Pressable onPress={() => router.push('/my-spots')} style={styles.quickEntryButton}>
-                <Text style={styles.quickEntryLabel}>我的地点</Text>
-                <Text style={styles.quickEntryMeta}>{userSpots.length}</Text>
-              </Pressable>
-            </View>
+            <View style={styles.heroMascotNose} />
+            <Ionicons name="paw-outline" size={12} color="#8A5B36" style={styles.heroMascotPaw} />
           </View>
-        }
-        ListFooterComponent={
-          filteredSpots.length === 0 ? (
+        </View>
+
+        <Pressable style={[styles.messageButton, { top: messageButtonTop }]}>
+          <Ionicons name="chatbubble-ellipses-outline" size={16} color="#FFFFFF" />
+        </Pressable>
+
+        <View style={styles.heroContent}>
+          <View style={styles.searchBoxWrap}>
+            <Ionicons name="search-outline" size={16} color="#424242" />
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="搜索地点、区域、标签"
+              placeholderTextColor="#6A6A6A"
+              style={styles.searchInput}
+              onFocus={() => setOpenMenu(null)}
+            />
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.heroChipRow}>
+            {HERO_TAGS.map((tag) => {
+              const isActive = tag === '全部' ? selectedTags.length === 0 : selectedTags.includes(tag);
+
+              return (
+                <Pressable
+                  key={tag}
+                  onPress={() => handleHeroTagPress(tag)}
+                  style={[styles.heroChip, isActive ? styles.heroChipActive : styles.heroChipDefault]}>
+                  <Text style={[styles.heroChipText, isActive ? styles.heroChipTextActive : styles.heroChipTextDefault]}>
+                    {tag}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </View>
+
+      <View style={styles.contentSheet}>
+        <View style={styles.selectorWrap}>
+          <Pressable
+            onPress={() => setOpenMenu((current) => (current === 'sort' ? null : 'sort'))}
+            style={styles.selectorButton}>
+            <Text style={styles.selectorText}>{sortSelectorLabel}</Text>
+            <Ionicons name="chevron-down" size={13} color="#505050" />
+          </Pressable>
+
+          <View style={styles.selectorDivider} />
+
+          <Pressable
+            onPress={() => setOpenMenu((current) => (current === 'district' ? null : 'district'))}
+            style={styles.selectorButton}>
+            <Text style={styles.selectorText}>{districtSelectorLabel}</Text>
+            <Ionicons name="chevron-down" size={13} color="#505050" />
+          </Pressable>
+
+          <View style={styles.selectorDivider} />
+
+          <Pressable
+            onPress={() => setOpenMenu((current) => (current === 'type' ? null : 'type'))}
+            style={styles.selectorButton}>
+            <Text style={styles.selectorText}>{typeSelectorLabel}</Text>
+            <Ionicons name="chevron-down" size={13} color="#505050" />
+          </Pressable>
+
+          {openMenu === 'sort' ? (
+            <View style={[styles.dropdownMenu, styles.dropdownLeft]}>
+              {SORT_OPTIONS.map((option) => (
+                <Pressable
+                  key={option.value}
+                  onPress={() => {
+                    setSortMode(option.value);
+                    setHasPickedSort(true);
+                    setOpenMenu(null);
+                  }}
+                  style={styles.dropdownItem}>
+                  <Text style={styles.dropdownItemText}>{option.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+
+          {openMenu === 'district' ? (
+            <View style={[styles.dropdownMenu, styles.dropdownCenter]}>
+              {districtOptions.map((district) => (
+                <Pressable
+                  key={district}
+                  onPress={() => {
+                    setSelectedDistrict(district);
+                    setOpenMenu(null);
+                  }}
+                  style={styles.dropdownItem}>
+                  <Text style={styles.dropdownItemText} numberOfLines={1}>
+                    {district}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+
+          {openMenu === 'type' ? (
+            <View style={[styles.dropdownMenu, styles.dropdownRight]}>
+              <Pressable
+                onPress={() => {
+                  setSelectedSpotType(null);
+                  setOpenMenu(null);
+                }}
+                style={styles.dropdownItem}>
+                <Text style={styles.dropdownItemText}>全部</Text>
+              </Pressable>
+
+              {SPOT_TYPE_OPTIONS.map((spotType) => (
+                <Pressable
+                  key={spotType}
+                  onPress={() => {
+                    setSelectedSpotType(spotType);
+                    setOpenMenu(null);
+                  }}
+                  style={styles.dropdownItem}>
+                  <Text style={styles.dropdownItemText}>{SPOT_TYPE_LABELS[spotType]}</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+        </View>
+
+        <FlatList
+          data={visibleSpots}
+          keyExtractor={(item) => item.id}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={
             <EmptyStateCard
               title="暂时没有符合条件的地点"
-              description="试试更换关键词、标签，或者直接清除筛选。"
-              hint={showUserOnly ? '还没有你添加的地点' : undefined}
-              action={<PrimaryButton label="清除筛选" onPress={resetExploreFilters} />}
+              description="试试调整关键词、区域、标签或类型。"
+              action={
+                <PrimaryButton
+                  label="重置筛选"
+                  onPress={() => {
+                    resetExploreFilters();
+                    setSelectedDistrict('全部');
+                    setHasPickedSort(false);
+                    setOpenMenu(null);
+                  }}
+                />
+              }
             />
-          ) : null
-        }
-        renderItem={({ item }) => {
-          if (item.type === 'sticky') {
-            return (
-              <View style={styles.stickyBar}>
-                <View style={styles.selectorSection}>
-                  <View style={styles.selectorRow}>
-                    <View style={styles.selectorColumn}>
-                      <Text style={styles.sectionLabel}>排序</Text>
-                      <Pressable
-                        onPress={() => setOpenMenu((current) => (current === 'sort' ? null : 'sort'))}
-                        style={[
-                          styles.selectorButton,
-                          openMenu === 'sort' ? styles.selectorButtonActive : null,
-                        ]}>
-                        <Text style={styles.selectorButtonText}>{selectedSortLabel}</Text>
-                        <Text style={styles.selectorChevron}>{openMenu === 'sort' ? '▲' : '▼'}</Text>
-                      </Pressable>
-                    </View>
-
-                    <View style={styles.selectorColumn}>
-                      <Text style={styles.sectionLabel}>类型</Text>
-                      <Pressable
-                        onPress={() => setOpenMenu((current) => (current === 'type' ? null : 'type'))}
-                        style={[
-                          styles.selectorButton,
-                          openMenu === 'type' ? styles.selectorButtonActive : null,
-                        ]}>
-                        <Text style={styles.selectorButtonText} numberOfLines={1}>
-                          {selectedTypeLabel}
-                        </Text>
-                        <Text style={styles.selectorChevron}>{openMenu === 'type' ? '▲' : '▼'}</Text>
-                      </Pressable>
-                    </View>
-                  </View>
-
-                  {openMenu === 'sort' ? (
-                    <View style={[styles.dropdownMenu, styles.dropdownMenuLeft]}>
-                      {SORT_OPTIONS.map((option) => (
-                        <Pressable
-                          key={option.value}
-                          onPress={() => {
-                            setSortMode(option.value);
-                            setOpenMenu(null);
-                          }}
-                          style={[
-                            styles.dropdownItem,
-                            sortMode === option.value ? styles.dropdownItemActive : null,
-                          ]}>
-                          <Text
-                            style={[
-                              styles.dropdownItemText,
-                              sortMode === option.value ? styles.dropdownItemTextActive : null,
-                            ]}>
-                            {option.label}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  ) : null}
-
-                  {openMenu === 'type' ? (
-                    <View style={[styles.dropdownMenu, styles.dropdownMenuRight]}>
-                      <Pressable
-                        onPress={() => {
-                          setSelectedSpotType(null);
-                          setOpenMenu(null);
-                        }}
-                        style={[
-                          styles.dropdownItem,
-                          selectedSpotType === null ? styles.dropdownItemActive : null,
-                        ]}>
-                        <Text
-                          style={[
-                            styles.dropdownItemText,
-                            selectedSpotType === null ? styles.dropdownItemTextActive : null,
-                          ]}>
-                          全部
-                        </Text>
-                      </Pressable>
-
-                      {SPOT_TYPE_OPTIONS.map((spotType) => (
-                        <Pressable
-                          key={spotType}
-                          onPress={() => {
-                            setSelectedSpotType(spotType);
-                            setOpenMenu(null);
-                          }}
-                          style={[
-                            styles.dropdownItem,
-                            selectedSpotType === spotType ? styles.dropdownItemActive : null,
-                          ]}>
-                          <Text
-                            style={[
-                              styles.dropdownItemText,
-                              selectedSpotType === spotType ? styles.dropdownItemTextActive : null,
-                            ]}>
-                            {SPOT_TYPE_LABELS[spotType]}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  ) : null}
-                </View>
-
-                <View style={styles.toolbarRow}>
-                  <View style={styles.toolbarOptions}>
-                    <Pressable
-                      onPress={() => setShowUserOnly(!showUserOnly)}
-                      onLongPress={() => setShowUserOnly(false)}>
-                      <TagChip label="我添加的" compact active={showUserOnly} />
-                    </Pressable>
-                    <Pressable
-                      onPress={() => setShowFavoritesOnly(!showFavoritesOnly)}
-                      onLongPress={() => setShowFavoritesOnly(false)}>
-                      <TagChip label="已收藏" compact active={showFavoritesOnly} />
-                    </Pressable>
-                  </View>
-                  {showUserOnly || showFavoritesOnly ? (
-                    <Pressable
-                      onPress={() => {
-                        setShowUserOnly(false);
-                        setShowFavoritesOnly(false);
-                      }}
-                      style={styles.clearAllButton}>
-                      <Text style={styles.clearAllButtonText}>重置</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-
-                <View style={styles.tagsSection}>
-                  <View style={styles.tagsHeader}>
-                    <Text style={styles.sectionLabel}>标签筛选</Text>
-                    {selectedTags.length > 0 ? (
-                      <Pressable onPress={clearSelectedTags} style={styles.clearAllButton}>
-                        <Text style={styles.clearAllButtonText}>清空</Text>
-                      </Pressable>
-                    ) : null}
-                  </View>
-
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.filterScrollContent}>
-                    <Pressable onPress={clearSelectedTags}>
-                      <TagChip label="全部" active={selectedTags.length === 0} />
-                    </Pressable>
-
-                    {allTags.map((tag) => (
-                      <Pressable key={tag} onPress={() => toggleSelectedTag(tag)}>
-                        <TagChip label={tag} active={selectedTags.includes(tag)} />
-                      </Pressable>
-                    ))}
-                  </ScrollView>
-                </View>
-
-                {recentViewedSpots.length > 0 ? (
-                  <View style={styles.recentSection}>
-                    <Text style={styles.sectionLabel}>最近看过</Text>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.recentContent}>
-                      {recentViewedSpots.map((spot) => (
-                        <Pressable
-                          key={spot.id}
-                          onPress={() => handleSelectSpot(spot.id)}
-                          style={styles.recentItem}>
-                          <Text style={styles.recentItemText} numberOfLines={1}>
-                            {spot.name}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </ScrollView>
-                  </View>
-                ) : null}
-              </View>
-            );
           }
+          renderItem={({ item }) => {
+            const distanceText = userLoc
+              ? formatDistance(getDistanceMeters(userLoc, { lat: item.lat, lng: item.lng }))
+              : '距离未知';
 
-          const spot = item.spot;
-          const identityBadge = getSpotIdentityBadge(spot);
-          const statusBadge = getExploreStatusBadge(spot);
-          const displayAddress =
-            spot.formattedAddress?.trim() ||
-            [spot.district, spot.addressHint].map((value) => value.trim()).filter(Boolean).join(' · ') ||
-            '地址待补充';
-          const badges = [
-            ...(isFavorite(spot.id) ? [{ label: '已收藏', variant: 'favorite' as const }] : []),
-            ...(statusBadge ? [statusBadge] : []),
-            { label: identityBadge.label, variant: identityBadge.variant },
-          ]
-            .filter(
-            (badge, index, source) =>
-              source.findIndex((item) => item.label === badge.label && item.variant === badge.variant) === index
-          )
-            .slice(0, 2);
-          const distanceText = userLoc
-            ? formatDistance(getDistanceMeters(userLoc, { lat: spot.lat, lng: spot.lng }))
-            : '距离未知';
-          const metaText = `${SPOT_TYPE_LABELS[spot.spotType]} · 热度 ${spot.votes}`;
-          const petFriendlyText = spot.petFriendlyLevel
-            ? PET_FRIENDLY_LABELS[spot.petFriendlyLevel]
-            : undefined;
-
-          return (
-            <ExploreSpotCard
-              spot={spot}
-              address={displayAddress}
-              badges={badges}
-              tags={spot.tags.slice(0, 1)}
-              extraTagCount={Math.max(spot.tags.length - 1, 0)}
-              distanceText={distanceText}
-              metaText={metaText}
-              petFriendlyText={petFriendlyText}
-              onPress={() => handleSelectSpot(spot.id)}
-            />
-          );
-        }}
-      />
+            return (
+              <ExploreSpotCard
+                spot={item}
+                distanceText={distanceText}
+                onPress={() => handleSelectSpot(item.id)}
+              />
+            );
+          }}
+        />
+      </View>
     </View>
   );
 }
@@ -468,315 +444,402 @@ export default function ExploreScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.pageBackground,
+    backgroundColor: '#ED8422',
   },
-  content: {
-    paddingHorizontal: theme.spacing.lg,
-    paddingTop: theme.spacing.sm,
-    paddingBottom: theme.spacing.xl + theme.spacing.sm,
-    flexGrow: 1,
+  hero: {
+    backgroundColor: '#ED8422',
+    paddingTop: 4,
+    paddingBottom: 6,
   },
-  header: {
-    marginBottom: theme.spacing.xs + 2,
-    gap: 8,
+  heroMascotArea: {
+    marginLeft: 16,
+    width: 64,
+    height: 64,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  searchRow: {
+  heroMascotEarLeft: {
+    position: 'absolute',
+    top: 10,
+    left: 16,
+    width: 16,
+    height: 16,
+    borderRadius: 6,
+    backgroundColor: '#E9BC90',
+    transform: [{ rotate: '-25deg' }],
+  },
+  heroMascotEarRight: {
+    position: 'absolute',
+    top: 10,
+    right: 16,
+    width: 16,
+    height: 16,
+    borderRadius: 6,
+    backgroundColor: '#E9BC90',
+    transform: [{ rotate: '25deg' }],
+  },
+  heroMascotFace: {
+    width: 34,
+    height: 30,
+    borderRadius: 12,
+    backgroundColor: '#F5D5B6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+  },
+  heroMascotEyeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: theme.spacing.sm - 2,
+    gap: 8,
+  },
+  heroMascotEye: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#6B3A1E',
+  },
+  heroMascotNose: {
+    width: 6,
+    height: 5,
+    borderRadius: 4,
+    marginTop: 3,
+    backgroundColor: '#8A5B36',
+  },
+  heroMascotPaw: {
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+  },
+  messageButton: {
+    position: 'absolute',
+    right: 16,
+    top: 12,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroContent: {
+    marginTop: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  searchBoxWrap: {
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: '#FFFEFF',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   searchInput: {
     flex: 1,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.cardBackground,
-    paddingHorizontal: 13,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: theme.colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#424242',
+    padding: 0,
   },
-  clearSearchButton: {
-    borderRadius: theme.radii.sm,
-    backgroundColor: theme.colors.chipBackground,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  clearSearchButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: theme.colors.textPrimary,
-  },
-  quickEntryRow: {
-    flexDirection: 'row',
+  heroChipRow: {
+    height: 28,
     gap: 8,
+    paddingRight: 24,
   },
-  quickEntryButton: {
-    flex: 1,
-    minHeight: 42,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.cardBackground,
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  quickEntryLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: theme.colors.textPrimary,
-  },
-  quickEntryMeta: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.primary,
-  },
-  stickyBar: {
-    marginBottom: theme.spacing.xs + 2,
-    borderRadius: theme.radii.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.cardBackground,
-    padding: 10,
-    gap: 10,
-  },
-  toolbarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  sectionLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.textSecondary,
-  },
-  toolbarOptions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.xs,
-  },
-  recentSection: {
-    gap: 6,
-  },
-  recentContent: {
-    gap: 6,
-    paddingBottom: 2,
-  },
-  recentItem: {
-    maxWidth: 180,
-    borderRadius: theme.radii.pill,
-    backgroundColor: theme.colors.cardBackground,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+  heroChip: {
+    height: 28,
+    minWidth: 65,
+    borderRadius: 999,
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  recentItemText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: theme.colors.textPrimary,
+  heroChipActive: {
+    backgroundColor: '#ED8422',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
-  selectorSection: {
-    position: 'relative',
-    gap: 5,
-    zIndex: 10,
+  heroChipDefault: {
+    backgroundColor: '#FFFEFF',
+    borderWidth: 0,
   },
-  selectorRow: {
-    flexDirection: 'row',
-    gap: 8,
+  heroChipText: {
+    fontSize: 14,
+    fontWeight: '700',
   },
-  selectorColumn: {
+  heroChipTextActive: {
+    color: '#F4F4F4',
+  },
+  heroChipTextDefault: {
+    color: '#ED8422',
+  },
+  contentSheet: {
     flex: 1,
-    gap: 5,
+    marginTop: 6,
+    marginHorizontal: 16,
+    backgroundColor: '#FFFEFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 12,
+    paddingHorizontal: 12,
+  },
+  selectorWrap: {
+    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingTop: 2,
+    paddingBottom: 10,
   },
   selectorButton: {
-    minHeight: 38,
+    width: '28%',
     flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.cardBackground,
-    paddingHorizontal: 11,
-    paddingVertical: 8,
+    gap: 3,
   },
-  selectorButtonActive: {
-    borderColor: theme.colors.primary,
-    backgroundColor: theme.colors.primarySoft,
+  selectorText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#4C4C4C',
+    textAlign: 'center',
   },
-  selectorButtonText: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.textPrimary,
-  },
-  selectorChevron: {
-    fontSize: 11,
-    color: theme.colors.textSecondary,
+  selectorDivider: {
+    width: 1,
+    height: 14,
+    backgroundColor: '#E6E6E6',
   },
   dropdownMenu: {
     position: 'absolute',
-    top: 62,
-    width: '48%',
-    borderRadius: theme.radii.md,
+    top: 34,
+    width: '31%',
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.cardBackground,
+    borderColor: '#E5E5E5',
+    backgroundColor: '#FFFFFF',
     padding: 6,
+    zIndex: 20,
     ...theme.shadows.card,
   },
-  dropdownMenuLeft: {
+  dropdownLeft: {
     left: 0,
   },
-  dropdownMenuRight: {
+  dropdownCenter: {
+    left: '34.5%',
+  },
+  dropdownRight: {
     right: 0,
   },
   dropdownItem: {
-    borderRadius: theme.radii.sm,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-  },
-  dropdownItemActive: {
-    backgroundColor: theme.colors.primarySoft,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
   },
   dropdownItemText: {
-    fontSize: 14,
-    color: theme.colors.textPrimary,
+    fontSize: 12,
+    color: '#303030',
   },
-  dropdownItemTextActive: {
-    fontWeight: '700',
-    color: theme.colors.primary,
-  },
-  tagsSection: {
-    gap: 5,
-  },
-  tagsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  listContent: {
+    paddingTop: 6,
+    paddingBottom: theme.spacing.xl + 20,
     gap: 10,
   },
-  clearAllButton: {
-    borderRadius: theme.radii.pill,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.cardBackground,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  clearAllButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.textSecondary,
-  },
-  filterScrollContent: {
-    gap: theme.spacing.xs,
-    paddingVertical: 1,
-  },
   spotCard: {
-    marginBottom: theme.spacing.sm,
-    borderRadius: theme.radii.lg,
-    backgroundColor: theme.colors.cardBackground,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    padding: 14,
-    gap: 9,
-    ...theme.shadows.card,
+    width: '100%',
+    height: 168,
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: '#D7D2CB',
   },
-  spotCardTop: {
-    flexDirection: 'row',
-    gap: 12,
+  spotMediaLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
   },
   spotImage: {
-    width: 68,
-    height: 68,
-    borderRadius: 14,
-    backgroundColor: theme.colors.surfaceMuted,
+    width: '100%',
+    height: '100%',
   },
   spotImagePlaceholder: {
-    width: 68,
-    height: 68,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surfaceMuted,
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#D8D2C8',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 8,
+    overflow: 'hidden',
   },
-  spotImagePlaceholderText: {
-    fontSize: 11,
-    color: theme.colors.textSecondary,
-    textAlign: 'center',
+  spotPlaceholderGlowA: {
+    position: 'absolute',
+    top: -24,
+    right: -30,
+    width: 130,
+    height: 130,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.18)',
   },
-  spotMeta: {
-    flex: 1,
-    gap: 5,
+  spotPlaceholderGlowB: {
+    position: 'absolute',
+    bottom: -42,
+    left: -28,
+    width: 116,
+    height: 116,
+    borderRadius: 999,
+    backgroundColor: 'rgba(118,112,102,0.2)',
   },
-  spotHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
+  spotPlaceholderContent: {
+    alignItems: 'center',
   },
-  spotTitle: {
-    flex: 1,
-    fontSize: 17,
-    fontWeight: '800',
-    color: theme.colors.textPrimary,
-  },
-  metaPill: {
-    borderRadius: theme.radii.pill,
-    backgroundColor: theme.colors.surfaceMuted,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  metaPillText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: theme.colors.textSecondary,
-  },
-  spotAddress: {
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  metaText: {
-    fontSize: 12,
-    color: theme.colors.textSecondary,
-  },
-  spotFooter: {
-    gap: 6,
-  },
-  badgeRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.xs,
-  },
-  tagsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.xs,
-  },
-  moreTagPill: {
-    borderRadius: theme.radii.pill,
-    backgroundColor: theme.colors.surfaceMuted,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+  spotPlaceholderIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  moreTagPillText: {
-    fontSize: 11,
+  spotPlaceholderTitle: {
+    marginTop: 8,
+    fontSize: 13,
     fontWeight: '700',
-    color: theme.colors.textSecondary,
+    color: '#55524D',
+  },
+  spotPlaceholderSubtitle: {
+    marginTop: 2,
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#726D66',
+  },
+  spotGradientLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2,
+  },
+  spotCardContent: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 3,
+    paddingHorizontal: 13,
+    paddingTop: 10,
+    paddingBottom: 9,
+    justifyContent: 'space-between',
+  },
+  typeBadge: {
+    alignSelf: 'flex-start',
+    minHeight: 17,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.26)',
+  },
+  typeBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.15,
+  },
+  spotBottomContent: {
+    position: 'relative',
+    paddingRight: 52,
+  },
+  sourceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 1,
+  },
+  sourceText: {
+    fontSize: 10,
+    lineHeight: 10,
+    fontWeight: '900',
+    color: '#ECECEC',
+  },
+  sourceTextPlatform: {
+    color: '#ED8422',
+  },
+  sourceTextUser: {
+    color: '#67A735',
+  },
+  sourceTextLocal: {
+    color: '#2F2F2F',
+  },
+  titleRow: {
+    marginTop: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+  },
+  spotTitle: {
+    flexShrink: 1,
+    fontSize: 21,
+    lineHeight: 26,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  distanceText: {
+    marginLeft: 9,
+    fontSize: 12,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.92)',
+  },
+  addressRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  districtText: {
+    flexShrink: 0,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  addressDot: {
+    marginHorizontal: 5,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.75)',
+  },
+  addressDetailText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '400',
+    color: 'rgba(255,255,255,0.88)',
+  },
+  tagsRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 5,
+  },
+  tagPill: {
+    height: 16,
+    minWidth: 31,
+    borderRadius: 999,
+    backgroundColor: 'rgba(237,132,34,0.88)',
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tagText: {
+    fontSize: 9,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.96)',
+  },
+  heatRow: {
+    position: 'absolute',
+    right: 12,
+    bottom: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  heatText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: 'rgba(244,244,244,0.95)',
   },
 });
