@@ -22,11 +22,12 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MapQuickActions } from '@/components/map/MapQuickActions';
-import { SpotDetailSheet } from '@/components/map/SpotDetailSheet';
 import { SpotFormModal } from '@/components/map/SpotFormModal';
+import { getSpotIdentityBadge } from '@/constants/spotIdentity';
 import { theme } from '@/constants/theme';
 import { usePetMapStore } from '@/store/petmap-store';
 import type { SpotType } from '@/types/spot';
+import { getDistanceMeters } from '@/utils/distance';
 
 const INITIAL_REGION: Region = {
   latitude: 31.2215,
@@ -48,6 +49,24 @@ const SPOT_TYPE_MARKER_COLORS: Record<
 };
 
 type SheetStage = 'collapsed' | 'half' | 'full';
+const COLLAPSED_VISIBLE_HEIGHT = 190;
+
+const COLLAPSED_TYPE_LABELS: Record<SpotType, string> = {
+  park: '公园',
+  cafe: '咖啡厅',
+  hospital: '宠物医院',
+  store: '宠物店',
+  indoor: '室内友好',
+  other: '其他',
+};
+
+function formatCollapsedDistance(distanceMeters: number) {
+  if (distanceMeters < 1000) {
+    return `${Math.round(distanceMeters)}m`;
+  }
+
+  return `${(distanceMeters / 1000).toFixed(1)}km`;
+}
 
 export default function TabOneScreen() {
   const params = useLocalSearchParams<{ returnTo?: string; returnStatus?: string }>();
@@ -83,6 +102,7 @@ export default function TabOneScreen() {
     favoriteCount,
     spots,
     selectedSpot,
+    userLoc,
     userSpots,
     addSpot,
     updateSpot,
@@ -121,7 +141,7 @@ export default function TabOneScreen() {
             }
           : null;
   const fullTopInset = insets.top + (returnContext ? 132 : 108);
-  const collapsedSheetHeight = 148 + insets.bottom;
+  const collapsedSheetHeight = COLLAPSED_VISIBLE_HEIGHT;
   const availableSheetHeight = Math.max(windowHeight - fullTopInset, collapsedSheetHeight + 72);
   const minHalfSheetHeight = Math.min(collapsedSheetHeight + 88, availableSheetHeight - 36);
   const maxHalfSheetHeight = Math.max(minHalfSheetHeight, availableSheetHeight - 84);
@@ -134,10 +154,7 @@ export default function TabOneScreen() {
   const halfOffset = Math.max(fullSheetHeight - halfSheetHeight, 0);
   const collapsedOffset = Math.max(fullSheetHeight - collapsedSheetHeight, 0);
   const sheetContainerBottomInset = 0;
-  const sheetFooterSafeAreaHeight = tabBarHeight + (sheetStage === 'full' ? 16 : 24);
-  const sheetFooterBaseClearance = Math.max(sheetFooterSafeAreaHeight, insets.bottom + 48);
-  const sheetHiddenBottomHeight = sheetStage === 'half' ? halfOffset : 0;
-  const sheetFooterSpacerHeight = sheetFooterBaseClearance + sheetHiddenBottomHeight;
+  const sheetBottomOverlap = Math.max(20, Math.min(tabBarHeight - insets.bottom, 28));
   const quickActionsBottom = Math.max(sheetVisibleHeight + 16, insets.bottom + 120);
   const sheetTranslateY = useRef(new Animated.Value(collapsedOffset)).current;
   const dragStartRef = useRef(collapsedOffset);
@@ -210,7 +227,7 @@ export default function TabOneScreen() {
   useEffect(() => {
     const listenerId = sheetTranslateY.addListener(({ value }) => {
       sheetOffsetRef.current = value;
-      const nextVisibleHeight = selectedSpot ? fullSheetHeight - value : 0;
+      const nextVisibleHeight = selectedSpot ? Math.max(fullSheetHeight - value - sheetBottomOverlap, 0) : 0;
       sheetVisibleHeightRef.current = nextVisibleHeight;
       setSheetVisibleHeight(nextVisibleHeight);
     });
@@ -218,7 +235,7 @@ export default function TabOneScreen() {
     return () => {
       sheetTranslateY.removeListener(listenerId);
     };
-  }, [fullSheetHeight, selectedSpot, sheetTranslateY]);
+  }, [fullSheetHeight, selectedSpot, sheetBottomOverlap, sheetTranslateY]);
 
   useEffect(() => {
     let isMounted = true;
@@ -374,10 +391,11 @@ export default function TabOneScreen() {
     setSheetStage('collapsed');
     sheetTranslateY.setValue(collapsedOffset);
     sheetOffsetRef.current = collapsedOffset;
-    sheetVisibleHeightRef.current = collapsedSheetHeight;
-    setSheetVisibleHeight(collapsedSheetHeight);
+    const nextCollapsedVisibleHeight = Math.max(collapsedSheetHeight - sheetBottomOverlap, 0);
+    sheetVisibleHeightRef.current = nextCollapsedVisibleHeight;
+    setSheetVisibleHeight(nextCollapsedVisibleHeight);
     recenterSelectedSpot(250);
-  }, [collapsedOffset, collapsedSheetHeight, selectedSpot, sheetTranslateY]);
+  }, [collapsedOffset, collapsedSheetHeight, selectedSpot, sheetBottomOverlap, sheetTranslateY]);
 
   useEffect(() => {
     if (!selectedSpot) {
@@ -386,10 +404,10 @@ export default function TabOneScreen() {
       return;
     }
 
-    const nextHeight = fullSheetHeight - getOffsetForStage(sheetStage);
+    const nextHeight = Math.max(fullSheetHeight - getOffsetForStage(sheetStage) - sheetBottomOverlap, 0);
     sheetVisibleHeightRef.current = nextHeight;
     setSheetVisibleHeight(nextHeight);
-  }, [fullSheetHeight, selectedSpot, sheetStage]);
+  }, [fullSheetHeight, selectedSpot, sheetBottomOverlap, sheetStage]);
 
   useEffect(() => {
     if (!selectedSpot) {
@@ -847,6 +865,25 @@ export default function TabOneScreen() {
   const selectedSpotDisplayAddress =
     selectedSpot?.formattedAddress?.trim() || selectedSpotFallbackAddress || '地址待补充';
   const collapsedPreviewUri = selectedSpotPhotoUris[0];
+  const collapsedTypeLabel = selectedSpot ? COLLAPSED_TYPE_LABELS[selectedSpot.spotType] : '';
+  const collapsedSourceLabel = selectedSpot ? getSpotIdentityBadge(selectedSpot).label : '';
+  const collapsedDistanceText =
+    selectedSpot && userLoc
+      ? formatCollapsedDistance(
+          getDistanceMeters(userLoc, {
+            lat: selectedSpot.lat,
+            lng: selectedSpot.lng,
+          })
+        )
+      : '9.5km';
+  const collapsedDistrict = selectedSpot?.district.trim() || '未知区域';
+  const collapsedAddressDetail = selectedSpot
+    ? selectedSpot.formattedAddress?.trim() ||
+      selectedSpot.addressHint.trim() ||
+      selectedSpotDisplayAddress.replace(`${collapsedDistrict} · `, '').trim() ||
+      '地址待补充'
+    : '地址待补充';
+  const collapsedTags = selectedSpot ? selectedSpot.tags.slice(0, 4) : [];
 
   return (
     <View style={styles.container}>
@@ -931,12 +968,15 @@ export default function TabOneScreen() {
             styles.sheet,
             {
               height: fullSheetHeight,
+              bottom: -sheetBottomOverlap,
               paddingBottom: sheetContainerBottomInset,
               transform: [{ translateY: sheetTranslateY }],
             },
           ]}>
           <View style={styles.sheetHandleArea} {...sheetPanResponder.panHandlers}>
-            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHandle}>
+              <View style={styles.sheetHandleInner} />
+            </View>
           </View>
 
           {sheetStage === 'collapsed' ? (
@@ -946,31 +986,68 @@ export default function TabOneScreen() {
                 animateSheetToStage('half');
               }}
               style={({ pressed }) => [
-                styles.collapsedCard,
-                pressed ? styles.collapsedCardPressed : null,
+                styles.collapsedSummaryBlock,
+                pressed ? styles.collapsedSummaryBlockPressed : null,
               ]}>
-              <View style={styles.collapsedCardRow}>
+              <View style={styles.collapsedTopMetaRow}>
+                <View style={styles.collapsedTypeBadge}>
+                  <Text style={styles.collapsedTypeBadgeText} numberOfLines={1}>
+                    {collapsedTypeLabel}
+                  </Text>
+                </View>
+                <View style={styles.collapsedSourceInfo}>
+                  <View style={styles.collapsedSourceIcon}>
+                    <View style={styles.collapsedSourceIconDot} />
+                  </View>
+                  <Text style={styles.collapsedSourceInfoText}>{collapsedSourceLabel}</Text>
+                </View>
+              </View>
+
+              <View style={styles.collapsedSummaryRow}>
+                <View style={styles.collapsedSummaryLeft}>
+                  <View style={styles.collapsedTitleRow}>
+                    <View style={styles.collapsedTitleWrap}>
+                      <Text style={styles.collapsedTitle} numberOfLines={1}>
+                        {selectedSpot.name}
+                      </Text>
+                    </View>
+                    <Text style={styles.collapsedDistance}>{collapsedDistanceText}</Text>
+                  </View>
+
+                  <View style={styles.collapsedAddressRow}>
+                    <Text style={styles.collapsedDistrict} numberOfLines={1}>
+                      {collapsedDistrict}
+                    </Text>
+                    <Text style={styles.collapsedAddressDot}>·</Text>
+                    <Text style={styles.collapsedAddress} numberOfLines={1}>
+                      {collapsedAddressDetail}
+                    </Text>
+                  </View>
+
+                  <View style={styles.collapsedTagsRow}>
+                    {collapsedTags.length > 0 ? (
+                      collapsedTags.map((tag) => (
+                        <View key={`${selectedSpot.id}-${tag}`} style={styles.collapsedTag}>
+                          <Text style={styles.collapsedTagText} numberOfLines={1}>
+                            {tag}
+                          </Text>
+                        </View>
+                      ))
+                    ) : (
+                      <View style={styles.collapsedTag}>
+                        <Text style={styles.collapsedTagText}>安静</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+
                 {collapsedPreviewUri ? (
                   <Image source={{ uri: collapsedPreviewUri }} style={styles.collapsedPreviewImage} />
                 ) : (
                   <View style={styles.collapsedPreviewPlaceholder}>
-                    <Text style={styles.collapsedPreviewPlaceholderEyebrow}>PetMap</Text>
-                    <Text style={styles.collapsedPreviewPlaceholderText}>暂无图片</Text>
+                    <Text style={styles.collapsedPreviewPlaceholderText}>小狗摄影在路上</Text>
                   </View>
                 )}
-
-                <View style={styles.collapsedCopy}>
-                  <Text style={styles.collapsedTitle} numberOfLines={1}>
-                    {selectedSpot.name}
-                  </Text>
-                  <Text style={styles.collapsedAddress} numberOfLines={2}>
-                    {selectedSpotDisplayAddress}
-                  </Text>
-                  <View style={styles.collapsedMetaRow}>
-                    <Text style={styles.collapsedMetaText}>上滑查看完整地点详情</Text>
-                    <Text style={styles.collapsedMetaText}>热度 {selectedSpot.votes}</Text>
-                  </View>
-                </View>
               </View>
             </Pressable>
           ) : (
@@ -981,46 +1058,28 @@ export default function TabOneScreen() {
                 sheetStage === 'full' ? styles.fullSheetContent : null,
               ]}
               showsVerticalScrollIndicator={false}>
-              {sheetStage === 'full' ? (
-                <View style={styles.fullHeroSection}>
-                  <Pressable
-                    onPress={() => {
-                      setSheetStage('collapsed');
-                      animateSheetToStage('collapsed');
-                    }}
-                    style={styles.fullHeroCollapseButton}>
-                    <Text style={styles.fullHeroCollapseButtonText}>收起返回地图</Text>
-                  </Pressable>
-                  {selectedSpotPhotoUris[0] ? (
-                    <Image source={{ uri: selectedSpotPhotoUris[0] }} style={styles.fullHeroImage} />
-                  ) : (
-                    <View style={styles.fullHeroFallback}>
-                      <Text style={styles.fullHeroEyebrow}>地点详情</Text>
-                      <Text style={styles.fullHeroTitle}>{selectedSpot.name}</Text>
-                      <Text style={styles.fullHeroAddress} numberOfLines={2}>
-                        {selectedSpotDisplayAddress}
-                      </Text>
-                    </View>
-                  )}
+              <View style={styles.stageSkeletonCard}>
+                <Text style={styles.stageSkeletonEyebrow}>
+                  {sheetStage === 'half' ? '继续上滑可展开更多' : '完整详情区域（建设中）'}
+                </Text>
+                <Text style={styles.stageSkeletonTitle} numberOfLines={1}>
+                  {selectedSpot.name}
+                </Text>
+                <Text style={styles.stageSkeletonText} numberOfLines={2}>
+                  {selectedSpotDisplayAddress}
+                </Text>
+                <View style={styles.stageSkeletonBlockLarge} />
+                <View style={styles.stageSkeletonBlockRow}>
+                  <View style={styles.stageSkeletonBlockSmall} />
+                  <View style={styles.stageSkeletonBlockSmall} />
                 </View>
-              ) : null}
-
-              <SpotDetailSheet
-                selectedSpot={selectedSpot}
-                selectedSpotPhotoUris={selectedSpotPhotoUris}
-                selectedSpotDisplayAddress={selectedSpotDisplayAddress}
-                isFavorite={isFavorite(selectedSpot.id)}
-                onToggleFavorite={() => toggleFavorite(selectedSpot.id)}
-                onClearSelected={clearSelectedSpot}
-                onSubmitForReview={handleSubmitForReview}
-                onEditSpot={handleEditSpot}
-                onDeleteSpot={handleDeleteSpot}
-                onOpenNavigation={handleOpenNavigation}
-                onShareSpotInfo={handleShareSpotInfo}
-                onPickSpotPhoto={handlePickSpotPhoto}
-                onRemoveSpotPhoto={handleRemoveSpotPhoto}
-              />
-              <View style={[styles.sheetFooterSpacer, { height: sheetFooterSpacerHeight }]} />
+                <Text style={styles.stageSkeletonHint}>
+                  {sheetStage === 'half'
+                    ? '拖拽继续上滑进入 Full，下滑返回 Collapsed。'
+                    : '拖拽下滑可回到 Half，再下滑回到 Collapsed。'}
+                </Text>
+              </View>
+              <View style={[styles.sheetFooterSpacer, { height: tabBarHeight + insets.bottom + 24 }]} />
             </ScrollView>
           )}
         </Animated.View>
@@ -1172,27 +1231,35 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    backgroundColor: theme.colors.cardBackground,
-    ...theme.shadows.floating,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    backgroundColor: '#FFFEFF',
   },
   sheetHandleArea: {
     alignItems: 'center',
-    paddingTop: 12,
-    paddingBottom: 10,
+    paddingTop: 4,
+    paddingBottom: 2,
   },
   sheetHandle: {
-    width: 48,
-    height: 5,
-    borderRadius: theme.radii.pill,
-    backgroundColor: theme.colors.border,
+    width: 33,
+    height: 14,
+    borderRadius: 999,
+    backgroundColor: '#F5E8DE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetHandleInner: {
+    width: 19,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: '#D9B79E',
   },
   sheetScroll: {
     flex: 1,
   },
   sheetContent: {
-    paddingHorizontal: theme.spacing.lg,
+    paddingHorizontal: 16,
+    paddingTop: 4,
     paddingBottom: 12,
   },
   fullSheetContent: {
@@ -1201,130 +1268,219 @@ const styles = StyleSheet.create({
   sheetFooterSpacer: {
     width: '100%',
   },
-  collapsedCard: {
-    marginHorizontal: theme.spacing.lg,
-    marginTop: 4,
-    borderRadius: theme.radii.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.cardBackground,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.md,
-    ...theme.shadows.card,
+  collapsedSummaryBlock: {
+    width: 343,
+    marginHorizontal: 16,
+    paddingTop: 0,
+    paddingBottom: 0,
+    gap: 6,
+    alignItems: 'flex-start',
   },
-  collapsedCardPressed: {
-    opacity: 0.92,
+  collapsedSummaryBlockPressed: {
+    opacity: 0.88,
   },
-  collapsedCardRow: {
+  collapsedTopMetaRow: {
+    width: 343,
+    height: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+  },
+  collapsedTypeBadge: {
+    height: 20,
+    borderRadius: 20,
+    backgroundColor: '#633817',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    justifyContent: 'center',
+  },
+  collapsedTypeBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 8,
+    fontWeight: '900',
+    lineHeight: 10,
+  },
+  collapsedSourceInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  collapsedSourceIcon: {
+    width: 12,
+    height: 12,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: '#ED8422',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  collapsedSourceIconDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: '#ED8422',
+  },
+  collapsedSourceInfoText: {
+    color: '#ED8422',
+    fontSize: 10,
+    fontWeight: '900',
+    lineHeight: 12,
+  },
+  collapsedSummaryRow: {
+    width: 343,
+    height: 68,
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  collapsedSummaryLeft: {
+    width: 230,
+    height: 65,
+    flexDirection: 'column',
+    gap: 2,
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+  },
+  collapsedTitleRow: {
+    width: 230,
+    height: 28,
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+  },
+  collapsedTitleWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  collapsedTitle: {
+    color: '#404040',
+    fontSize: 20,
+    fontWeight: '700',
+    lineHeight: 28,
+  },
+  collapsedDistance: {
+    flexShrink: 0,
+    minWidth: 54,
+    textAlign: 'right',
+    color: '#404040',
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 14,
+  },
+  collapsedAddressRow: {
+    width: 230,
+    height: 14,
+    flexDirection: 'row',
+    gap: 4,
+    alignItems: 'center',
+  },
+  collapsedDistrict: {
+    flexShrink: 0,
+    color: '#424242',
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 14,
+  },
+  collapsedAddressDot: {
+    flexShrink: 0,
+    color: '#7A7A7A',
+    fontSize: 10,
+    lineHeight: 12,
+  },
+  collapsedAddress: {
+    flex: 1,
+    color: '#424242',
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 14,
+  },
+  collapsedTagsRow: {
+    width: 230,
+    height: 19,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  collapsedTag: {
+    minWidth: 33,
+    height: 13,
+    borderRadius: 999,
+    backgroundColor: '#ED8422',
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  collapsedTagText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '400',
+    lineHeight: 12,
   },
   collapsedPreviewImage: {
-    width: 88,
-    height: 88,
-    borderRadius: theme.radii.md,
-    backgroundColor: theme.colors.surfaceMuted,
+    width: 103,
+    height: 68,
+    borderRadius: 0,
+    backgroundColor: '#D9D9D9',
   },
   collapsedPreviewPlaceholder: {
-    width: 88,
-    height: 88,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.primarySoft,
+    width: 103,
+    height: 68,
+    borderRadius: 0,
+    backgroundColor: 'rgba(217,217,217,1)',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 10,
   },
-  collapsedPreviewPlaceholderEyebrow: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    color: theme.colors.primary,
-  },
   collapsedPreviewPlaceholderText: {
-    marginTop: 6,
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.textSecondary,
-  },
-  collapsedCopy: {
-    flex: 1,
-    minHeight: 88,
-    justifyContent: 'center',
-  },
-  collapsedTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: theme.colors.textPrimary,
-  },
-  collapsedAddress: {
-    marginTop: 6,
-    fontSize: 13,
-    lineHeight: 18,
-    color: theme.colors.textSecondary,
-  },
-  collapsedMetaRow: {
-    marginTop: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: theme.spacing.sm,
-  },
-  collapsedMetaText: {
+    color: '#404040',
     fontSize: 12,
     fontWeight: '600',
-    color: theme.colors.primary,
+    lineHeight: 16,
+    textAlign: 'center',
   },
-  fullHeroSection: {
-    marginBottom: theme.spacing.sm,
-    position: 'relative',
-  },
-  fullHeroCollapseButton: {
-    borderRadius: theme.radii.pill,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  fullHeroCollapseButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.textPrimary,
-  },
-  fullHeroImage: {
-    width: '100%',
-    height: 220,
-    borderRadius: theme.radii.lg,
-    backgroundColor: theme.colors.surfaceMuted,
-  },
-  fullHeroFallback: {
-    borderRadius: theme.radii.lg,
+  stageSkeletonCard: {
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.primarySoft,
-    paddingHorizontal: theme.spacing.md,
-    paddingTop: theme.spacing.xl + 22,
-    paddingBottom: theme.spacing.lg,
+    borderColor: '#EDE9E6',
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+    gap: 10,
   },
-  fullHeroEyebrow: {
-    fontSize: 12,
+  stageSkeletonEyebrow: {
+    fontSize: 11,
     fontWeight: '700',
-    color: theme.colors.primary,
+    color: '#8C8C8C',
   },
-  fullHeroTitle: {
-    marginTop: 6,
-    fontSize: 24,
-    lineHeight: 30,
-    fontWeight: '800',
-    color: theme.colors.textPrimary,
+  stageSkeletonTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#404040',
   },
-  fullHeroAddress: {
-    marginTop: 8,
+  stageSkeletonText: {
     fontSize: 13,
-    lineHeight: 19,
-    color: theme.colors.textSecondary,
+    lineHeight: 18,
+    color: '#616161',
+  },
+  stageSkeletonBlockLarge: {
+    width: '100%',
+    height: 88,
+    borderRadius: 12,
+    backgroundColor: '#F1F1F1',
+  },
+  stageSkeletonBlockRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  stageSkeletonBlockSmall: {
+    flex: 1,
+    height: 48,
+    borderRadius: 10,
+    backgroundColor: '#F4F4F4',
+  },
+  stageSkeletonHint: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#7A7A7A',
   },
   modalBackdrop: {
     flex: 1,
