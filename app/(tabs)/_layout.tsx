@@ -21,6 +21,7 @@ export default function TabLayout() {
         name="index"
         options={{
           title: '地图',
+          headerShown: false,
           tabBarIcon: ({ color }) => (
             <SymbolView
               name={{
@@ -32,7 +33,6 @@ export default function TabLayout() {
               size={28}
             />
           ),
-          headerTitle: 'PetMap',
         }}
       />
       <Tabs.Screen

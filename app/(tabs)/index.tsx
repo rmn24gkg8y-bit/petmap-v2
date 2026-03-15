@@ -1,6 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -21,12 +22,24 @@ import MapView, { Marker, type Region } from 'react-native-maps';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import CoffeeDefaultMarker from '@/assets/markers/coffee-default.svg';
+import CoffeeSelectedMarker from '@/assets/markers/coffee-selected.svg';
+import MallDefaultMarker from '@/assets/markers/mall-default.svg';
+import MallSelectedMarker from '@/assets/markers/mall-selected.svg';
+import ParkDefaultMarker from '@/assets/markers/park-default.svg';
+import ParkSelectedMarker from '@/assets/markers/park-selected.svg';
+import PetshopDefaultMarker from '@/assets/markers/petshop-default.svg';
+import PetshopSelectedMarker from '@/assets/markers/petshop-selected.svg';
+import UserDefaultMarker from '@/assets/markers/user-default.svg';
+import UserSelectedMarker from '@/assets/markers/user-selected.svg';
+import VetDefaultMarker from '@/assets/markers/vet-default.svg';
+import VetSelectedMarker from '@/assets/markers/vet-selected.svg';
 import { MapQuickActions } from '@/components/map/MapQuickActions';
-import { SpotDetailSheet } from '@/components/map/SpotDetailSheet';
 import { SpotFormModal } from '@/components/map/SpotFormModal';
 import { theme } from '@/constants/theme';
 import { usePetMapStore } from '@/store/petmap-store';
-import type { SpotType } from '@/types/spot';
+import type { Spot, SpotType } from '@/types/spot';
+import { getDistanceMeters } from '@/utils/distance';
 
 const INITIAL_REGION: Region = {
   latitude: 31.2215,
@@ -34,20 +47,157 @@ const INITIAL_REGION: Region = {
   latitudeDelta: 0.08,
   longitudeDelta: 0.08,
 };
-
-const SPOT_TYPE_MARKER_COLORS: Record<
-  SpotType,
-  { solid: string; soft: string }
-> = {
-  park: { solid: '#2F9E44', soft: '#E7F6EB' },
-  cafe: { solid: '#B96A2F', soft: '#FDF0E6' },
-  hospital: { solid: '#D6333D', soft: '#FDEBEC' },
-  store: { solid: '#7C4DFF', soft: '#F1EBFF' },
-  indoor: { solid: '#1D6FD8', soft: '#EAF2FF' },
-  other: { solid: '#6B7280', soft: '#F3F4F6' },
-};
+type MarkerVisualCategory = 'coffee' | 'mall' | 'park' | 'petshop' | 'user' | 'vet';
+const MARKER_FILTER_OPTIONS: Array<{ key: MarkerVisualCategory; label: string }> = [
+  { key: 'coffee', label: '咖啡店' },
+  { key: 'mall', label: '商场' },
+  { key: 'park', label: '户外 / 公园' },
+  { key: 'petshop', label: '宠物店' },
+  { key: 'user', label: '用户自选 / 用户提交' },
+  { key: 'vet', label: '宠物医院' },
+];
+const ALL_MARKER_FILTER_KEYS = MARKER_FILTER_OPTIONS.map((item) => item.key);
 
 type SheetStage = 'collapsed' | 'half' | 'full';
+const COLLAPSED_VISIBLE_HEIGHT = 190;
+const HALF_VISIBLE_HEIGHT = 523;
+
+const COLLAPSED_TYPE_LABELS: Record<SpotType, string> = {
+  park: '公园',
+  cafe: '咖啡厅',
+  hospital: '宠物医院',
+  store: '宠物店',
+  indoor: '室内友好',
+  other: '其他',
+};
+
+function formatCollapsedDistance(distanceMeters: number) {
+  if (distanceMeters < 1000) {
+    return `${Math.round(distanceMeters)}m`;
+  }
+
+  return `${(distanceMeters / 1000).toFixed(1)}km`;
+}
+
+function stripLeadingDistrict(detail: string, district: string) {
+  const normalizedDetail = detail.trim();
+  const normalizedDistrict = district.trim();
+
+  if (!normalizedDetail || !normalizedDistrict) {
+    return normalizedDetail;
+  }
+
+  if (!normalizedDetail.startsWith(normalizedDistrict)) {
+    return normalizedDetail;
+  }
+
+  const withoutDistrict = normalizedDetail.slice(normalizedDistrict.length).replace(/^[·,\s，]+/, '').trim();
+
+  return withoutDistrict || normalizedDetail;
+}
+
+function resolveSourceInfoDisplay(spot: Spot | null | undefined) {
+  if (!spot) {
+    return null;
+  }
+
+  if (spot.source === 'system') {
+    return {
+      label: '平台整理',
+      color: '#ED8422',
+    };
+  }
+
+  if (
+    spot.source !== 'user' ||
+    spot.submissionStatus === 'local' ||
+    spot.submissionStatus === 'pending_review' ||
+    !spot.verified
+  ) {
+    return null;
+  }
+
+  const dynamicSpot = spot as Record<string, unknown>;
+  const userNameCandidateKeys = [
+    'userName',
+    'username',
+    'creatorName',
+    'authorName',
+    'submittedByName',
+    'providerName',
+  ] as const;
+  const userName = userNameCandidateKeys
+    .map((key) => dynamicSpot[key])
+    .find((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    ?.trim();
+
+  if (!userName) {
+    return null;
+  }
+
+  return {
+    label: `由 @${userName} 提供`,
+    color: '#2EA65A',
+  };
+}
+
+function resolveMarkerVisualCategory(spot: Pick<Spot, 'source' | 'spotType'>): MarkerVisualCategory | null {
+  if (spot.source === 'user') {
+    return 'user';
+  }
+
+  if (spot.spotType === 'cafe') {
+    return 'coffee';
+  }
+
+  if (spot.spotType === 'park') {
+    return 'park';
+  }
+
+  if (spot.spotType === 'hospital') {
+    return 'vet';
+  }
+
+  if (spot.spotType === 'store') {
+    return 'petshop';
+  }
+
+  if (spot.spotType === 'indoor') {
+    return 'mall';
+  }
+
+  return null;
+}
+
+function renderMarkerVisual(category: MarkerVisualCategory, selected: boolean) {
+  if (category === 'coffee') {
+    const MarkerComponent = selected ? CoffeeSelectedMarker : CoffeeDefaultMarker;
+    return <MarkerComponent />;
+  }
+
+  if (category === 'mall') {
+    const MarkerComponent = selected ? MallSelectedMarker : MallDefaultMarker;
+    return <MarkerComponent />;
+  }
+
+  if (category === 'park') {
+    const MarkerComponent = selected ? ParkSelectedMarker : ParkDefaultMarker;
+    return <MarkerComponent />;
+  }
+
+  if (category === 'petshop') {
+    const MarkerComponent = selected ? PetshopSelectedMarker : PetshopDefaultMarker;
+    return <MarkerComponent />;
+  }
+
+  if (category === 'vet') {
+    const MarkerComponent = selected ? VetSelectedMarker : VetDefaultMarker;
+    return <MarkerComponent />;
+  }
+
+  const MarkerComponent = selected ? UserSelectedMarker : UserDefaultMarker;
+  return <MarkerComponent />;
+}
 
 export default function TabOneScreen() {
   const params = useLocalSearchParams<{ returnTo?: string; returnStatus?: string }>();
@@ -68,6 +218,9 @@ export default function TabOneScreen() {
   const [formError, setFormError] = useState('');
   const [sheetStage, setSheetStage] = useState<SheetStage>('collapsed');
   const [sheetVisibleHeight, setSheetVisibleHeight] = useState(0);
+  const [isFilterPanelVisible, setIsFilterPanelVisible] = useState(false);
+  const [selectedMarkerFilters, setSelectedMarkerFilters] =
+    useState<MarkerVisualCategory[]>(ALL_MARKER_FILTER_KEYS);
   const [formValues, setFormValues] = useState({
     name: '',
     district: '',
@@ -83,6 +236,7 @@ export default function TabOneScreen() {
     favoriteCount,
     spots,
     selectedSpot,
+    userLoc,
     userSpots,
     addSpot,
     updateSpot,
@@ -121,23 +275,20 @@ export default function TabOneScreen() {
             }
           : null;
   const fullTopInset = insets.top + (returnContext ? 132 : 108);
-  const collapsedSheetHeight = 148 + insets.bottom;
+  const collapsedSheetHeight = COLLAPSED_VISIBLE_HEIGHT;
   const availableSheetHeight = Math.max(windowHeight - fullTopInset, collapsedSheetHeight + 72);
+  const sheetBottomOverlap = Math.max(20, Math.min(tabBarHeight - insets.bottom, 28));
   const minHalfSheetHeight = Math.min(collapsedSheetHeight + 88, availableSheetHeight - 36);
-  const maxHalfSheetHeight = Math.max(minHalfSheetHeight, availableSheetHeight - 84);
-  const halfSheetHeight = Math.min(
-    Math.max(availableSheetHeight * 0.58, minHalfSheetHeight),
-    maxHalfSheetHeight
+  const maxHalfSheetHeight = Math.max(minHalfSheetHeight, availableSheetHeight - 36);
+  const halfSheetHeight = Math.max(
+    minHalfSheetHeight,
+    Math.min(HALF_VISIBLE_HEIGHT + sheetBottomOverlap, maxHalfSheetHeight)
   );
-  const fullSheetHeight = availableSheetHeight;
+  const fullSheetHeight = windowHeight + sheetBottomOverlap;
   const fullOffset = 0;
   const halfOffset = Math.max(fullSheetHeight - halfSheetHeight, 0);
   const collapsedOffset = Math.max(fullSheetHeight - collapsedSheetHeight, 0);
   const sheetContainerBottomInset = 0;
-  const sheetFooterSafeAreaHeight = tabBarHeight + (sheetStage === 'full' ? 16 : 24);
-  const sheetFooterBaseClearance = Math.max(sheetFooterSafeAreaHeight, insets.bottom + 48);
-  const sheetHiddenBottomHeight = sheetStage === 'half' ? halfOffset : 0;
-  const sheetFooterSpacerHeight = sheetFooterBaseClearance + sheetHiddenBottomHeight;
   const quickActionsBottom = Math.max(sheetVisibleHeight + 16, insets.bottom + 120);
   const sheetTranslateY = useRef(new Animated.Value(collapsedOffset)).current;
   const dragStartRef = useRef(collapsedOffset);
@@ -210,7 +361,7 @@ export default function TabOneScreen() {
   useEffect(() => {
     const listenerId = sheetTranslateY.addListener(({ value }) => {
       sheetOffsetRef.current = value;
-      const nextVisibleHeight = selectedSpot ? fullSheetHeight - value : 0;
+      const nextVisibleHeight = selectedSpot ? Math.max(fullSheetHeight - value - sheetBottomOverlap, 0) : 0;
       sheetVisibleHeightRef.current = nextVisibleHeight;
       setSheetVisibleHeight(nextVisibleHeight);
     });
@@ -218,7 +369,7 @@ export default function TabOneScreen() {
     return () => {
       sheetTranslateY.removeListener(listenerId);
     };
-  }, [fullSheetHeight, selectedSpot, sheetTranslateY]);
+  }, [fullSheetHeight, selectedSpot, sheetBottomOverlap, sheetTranslateY]);
 
   useEffect(() => {
     let isMounted = true;
@@ -374,10 +525,11 @@ export default function TabOneScreen() {
     setSheetStage('collapsed');
     sheetTranslateY.setValue(collapsedOffset);
     sheetOffsetRef.current = collapsedOffset;
-    sheetVisibleHeightRef.current = collapsedSheetHeight;
-    setSheetVisibleHeight(collapsedSheetHeight);
+    const nextCollapsedVisibleHeight = Math.max(collapsedSheetHeight - sheetBottomOverlap, 0);
+    sheetVisibleHeightRef.current = nextCollapsedVisibleHeight;
+    setSheetVisibleHeight(nextCollapsedVisibleHeight);
     recenterSelectedSpot(250);
-  }, [collapsedOffset, collapsedSheetHeight, selectedSpot, sheetTranslateY]);
+  }, [collapsedOffset, collapsedSheetHeight, selectedSpot, sheetBottomOverlap, sheetTranslateY]);
 
   useEffect(() => {
     if (!selectedSpot) {
@@ -386,10 +538,10 @@ export default function TabOneScreen() {
       return;
     }
 
-    const nextHeight = fullSheetHeight - getOffsetForStage(sheetStage);
+    const nextHeight = Math.max(fullSheetHeight - getOffsetForStage(sheetStage) - sheetBottomOverlap, 0);
     sheetVisibleHeightRef.current = nextHeight;
     setSheetVisibleHeight(nextHeight);
-  }, [fullSheetHeight, selectedSpot, sheetStage]);
+  }, [fullSheetHeight, selectedSpot, sheetBottomOverlap, sheetStage]);
 
   useEffect(() => {
     if (!selectedSpot) {
@@ -847,6 +999,91 @@ export default function TabOneScreen() {
   const selectedSpotDisplayAddress =
     selectedSpot?.formattedAddress?.trim() || selectedSpotFallbackAddress || '地址待补充';
   const collapsedPreviewUri = selectedSpotPhotoUris[0];
+  const collapsedTypeLabel = selectedSpot ? COLLAPSED_TYPE_LABELS[selectedSpot.spotType] : '';
+  const sourceInfoDisplay = resolveSourceInfoDisplay(selectedSpot);
+  const collapsedDistanceText =
+    selectedSpot && userLoc
+      ? formatCollapsedDistance(
+          getDistanceMeters(userLoc, {
+            lat: selectedSpot.lat,
+            lng: selectedSpot.lng,
+          })
+        )
+      : '9.5km';
+  const collapsedDistrict = selectedSpot?.district.trim() || '未知区域';
+  const collapsedAddressDetail = selectedSpot
+    ? stripLeadingDistrict(
+        selectedSpot.formattedAddress?.trim() ||
+          selectedSpot.addressHint.trim() ||
+          selectedSpotDisplayAddress.replace(`${collapsedDistrict} · `, '').trim() ||
+          '地址待补充',
+        collapsedDistrict
+      ) || '地址待补充'
+    : '地址待补充';
+  const collapsedTags = selectedSpot ? selectedSpot.tags.slice(0, 4) : [];
+  const halfTags = selectedSpot ? selectedSpot.tags.slice(0, 4) : [];
+  const halfDescription =
+    selectedSpot?.description.trim() || '该地点的详细介绍暂未补充，后续会继续完善。';
+  const halfBusinessHours = selectedSpot?.businessHours?.trim() || '待补充';
+  const halfPhotoUris = selectedSpotPhotoUris.slice(0, 6);
+  const halfAddressDetail = collapsedAddressDetail;
+  const fullHeroPhoto = halfPhotoUris[0];
+  const fullDistanceText =
+    selectedSpot && userLoc
+      ? (() => {
+          const distanceMeters = getDistanceMeters(userLoc, {
+            lat: selectedSpot.lat,
+            lng: selectedSpot.lng,
+          });
+          if (distanceMeters > 99000) {
+            return '99km+';
+          }
+          return formatCollapsedDistance(distanceMeters);
+        })()
+      : null;
+  const isUserOwnedSpot = selectedSpot?.source === 'user';
+  const ownerSpotStatusLabel =
+    selectedSpot?.submissionStatus === 'pending_review'
+      ? '审核中'
+      : selectedSpot?.verified
+        ? '已发布'
+        : '仅本地保存';
+  const shouldShowSubmitForReview = isUserOwnedSpot && !selectedSpot?.verified;
+  const canSubmitForReview = isUserOwnedSpot && selectedSpot?.submissionStatus !== 'pending_review';
+  const visibleSpots = useMemo(
+    () =>
+      spots.filter((spot) => {
+        const category = resolveMarkerVisualCategory(spot);
+        return category ? selectedMarkerFilters.includes(category) : false;
+      }),
+    [selectedMarkerFilters, spots]
+  );
+
+  useEffect(() => {
+    if (!selectedSpot) {
+      return;
+    }
+
+    const category = resolveMarkerVisualCategory(selectedSpot);
+    const shouldKeepSelected =
+      category !== null && selectedMarkerFilters.includes(category);
+
+    if (!shouldKeepSelected) {
+      clearSelectedSpot();
+    }
+  }, [clearSelectedSpot, selectedMarkerFilters, selectedSpot]);
+
+  function toggleMarkerFilter(category: MarkerVisualCategory) {
+    setSelectedMarkerFilters((current) =>
+      current.includes(category)
+        ? current.filter((item) => item !== category)
+        : [...current, category]
+    );
+  }
+
+  function handleSelectAllMarkerFilters() {
+    setSelectedMarkerFilters(ALL_MARKER_FILTER_KEYS);
+  }
 
   return (
     <View style={styles.container}>
@@ -876,9 +1113,13 @@ export default function TabOneScreen() {
         }}
         onLongPress={handleLongPress}
         showsUserLocation>
-        {spots.map((spot) => {
+        {visibleSpots.map((spot) => {
           const isSelected = selectedSpot?.id === spot.id;
-          const markerColors = SPOT_TYPE_MARKER_COLORS[spot.spotType];
+          const markerVisualCategory = resolveMarkerVisualCategory(spot);
+
+          if (!markerVisualCategory) {
+            return null;
+          }
 
           return (
             <Marker
@@ -886,32 +1127,7 @@ export default function TabOneScreen() {
               coordinate={{ latitude: spot.lat, longitude: spot.lng }}
               tracksViewChanges={false}
               onPress={() => setSelectedSpot(spot.id)}>
-              <View style={styles.markerContainer}>
-                <View
-                  style={[
-                    styles.markerPin,
-                    isSelected ? styles.markerPinSelected : styles.markerPinDefault,
-                    {
-                      borderColor: markerColors.solid,
-                      backgroundColor: isSelected ? markerColors.soft : '#FFFFFF',
-                    },
-                  ]}>
-                  <View
-                    style={[
-                      styles.markerCenter,
-                      isSelected ? styles.markerCenterSelected : styles.markerCenterDefault,
-                      { backgroundColor: markerColors.solid },
-                    ]}
-                  />
-                </View>
-                <View
-                  style={[
-                    styles.markerStem,
-                    isSelected ? styles.markerStemSelected : styles.markerStemDefault,
-                    { backgroundColor: markerColors.solid },
-                  ]}
-                />
-              </View>
+              <View style={styles.markerContainer}>{renderMarkerVisual(markerVisualCategory, isSelected)}</View>
             </Marker>
           );
         })}
@@ -925,18 +1141,71 @@ export default function TabOneScreen() {
         onPressMySpots={() => router.push('/my-spots')}
       />
 
+      <View pointerEvents="box-none" style={[styles.filterQuickEntryWrap, { bottom: quickActionsBottom + 112 }]}>
+        <Pressable
+          onPress={() => setIsFilterPanelVisible(true)}
+          style={({ pressed }) => [styles.filterQuickEntryButton, pressed ? styles.filterQuickEntryPressed : null]}>
+          <Ionicons name="options-outline" size={16} color="#0F172A" />
+          <Text style={styles.filterQuickEntryText}>筛选</Text>
+        </Pressable>
+      </View>
+
+      {isFilterPanelVisible ? (
+        <View style={styles.filterOverlay}>
+          <Pressable style={styles.filterBackdrop} onPress={() => setIsFilterPanelVisible(false)} />
+          <View style={styles.filterPanel}>
+            <View style={styles.filterPanelHeader}>
+              <Text style={styles.filterPanelTitle}>地图筛选</Text>
+              <Pressable onPress={() => setIsFilterPanelVisible(false)} style={styles.filterCloseButton}>
+                <Ionicons name="close" size={16} color="#4A4A4A" />
+              </Pressable>
+            </View>
+
+            <View style={styles.filterOptionsWrap}>
+              {MARKER_FILTER_OPTIONS.map((item) => {
+                const checked = selectedMarkerFilters.includes(item.key);
+
+                return (
+                  <Pressable
+                    key={item.key}
+                    onPress={() => toggleMarkerFilter(item.key)}
+                    style={[styles.filterOptionItem, checked ? styles.filterOptionItemActive : null]}>
+                    <Text style={[styles.filterOptionText, checked ? styles.filterOptionTextActive : null]}>
+                      {item.label}
+                    </Text>
+                    {checked ? <Ionicons name="checkmark" size={14} color="#ED8422" /> : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View style={styles.filterActionsRow}>
+              <Pressable onPress={handleSelectAllMarkerFilters} style={styles.filterSecondaryButton}>
+                <Text style={styles.filterSecondaryButtonText}>重置/全选</Text>
+              </Pressable>
+              <Pressable onPress={() => setIsFilterPanelVisible(false)} style={styles.filterPrimaryButton}>
+                <Text style={styles.filterPrimaryButtonText}>应用</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      ) : null}
+
       {selectedSpot ? (
         <Animated.View
           style={[
             styles.sheet,
             {
               height: fullSheetHeight,
+              bottom: -sheetBottomOverlap,
               paddingBottom: sheetContainerBottomInset,
               transform: [{ translateY: sheetTranslateY }],
             },
           ]}>
           <View style={styles.sheetHandleArea} {...sheetPanResponder.panHandlers}>
-            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHandle}>
+              <View style={styles.sheetHandleInner} />
+            </View>
           </View>
 
           {sheetStage === 'collapsed' ? (
@@ -946,81 +1215,430 @@ export default function TabOneScreen() {
                 animateSheetToStage('half');
               }}
               style={({ pressed }) => [
-                styles.collapsedCard,
-                pressed ? styles.collapsedCardPressed : null,
+                styles.collapsedSummaryBlock,
+                pressed ? styles.collapsedSummaryBlockPressed : null,
               ]}>
-              <View style={styles.collapsedCardRow}>
+              <View style={styles.collapsedTopMetaRow}>
+                <View style={styles.collapsedTypeBadge}>
+                  <Text style={styles.collapsedTypeBadgeText} numberOfLines={1}>
+                    {collapsedTypeLabel}
+                  </Text>
+                </View>
+                {sourceInfoDisplay ? (
+                  <View style={styles.collapsedSourceInfo}>
+                    <View style={[styles.collapsedSourceIcon, { borderColor: sourceInfoDisplay.color }]}>
+                      <View style={[styles.collapsedSourceIconDot, { backgroundColor: sourceInfoDisplay.color }]} />
+                    </View>
+                    <Text style={[styles.collapsedSourceInfoText, { color: sourceInfoDisplay.color }]}>
+                      {sourceInfoDisplay.label}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+
+              <View style={styles.collapsedSummaryRow}>
+                <View style={styles.collapsedSummaryLeft}>
+                  <View style={styles.collapsedTitleRow}>
+                    <View style={styles.collapsedTitleWrap}>
+                      <Text style={styles.collapsedTitle} numberOfLines={1}>
+                        {selectedSpot.name}
+                      </Text>
+                    </View>
+                    <Text style={styles.collapsedDistance}>{collapsedDistanceText}</Text>
+                  </View>
+
+                  <View style={styles.collapsedAddressRow}>
+                    <Text style={styles.collapsedDistrict} numberOfLines={1}>
+                      {collapsedDistrict}
+                    </Text>
+                    <Text style={styles.collapsedAddressDot}>·</Text>
+                    <Text style={styles.collapsedAddress} numberOfLines={1}>
+                      {collapsedAddressDetail}
+                    </Text>
+                  </View>
+
+                  <View style={styles.collapsedTagsRow}>
+                    {collapsedTags.length > 0 ? (
+                      collapsedTags.map((tag) => (
+                        <View key={`${selectedSpot.id}-${tag}`} style={styles.collapsedTag}>
+                          <Text style={styles.collapsedTagText} numberOfLines={1}>
+                            {tag}
+                          </Text>
+                        </View>
+                      ))
+                    ) : (
+                      <View style={styles.collapsedTag}>
+                        <Text style={styles.collapsedTagText}>安静</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+
                 {collapsedPreviewUri ? (
                   <Image source={{ uri: collapsedPreviewUri }} style={styles.collapsedPreviewImage} />
                 ) : (
                   <View style={styles.collapsedPreviewPlaceholder}>
-                    <Text style={styles.collapsedPreviewPlaceholderEyebrow}>PetMap</Text>
-                    <Text style={styles.collapsedPreviewPlaceholderText}>暂无图片</Text>
+                    <Text style={styles.collapsedPreviewPlaceholderText}>小狗摄影在路上</Text>
                   </View>
                 )}
+              </View>
+            </Pressable>
+          ) : sheetStage === 'half' ? (
+            <ScrollView
+              style={styles.sheetScroll}
+              contentContainerStyle={styles.halfContent}
+              showsVerticalScrollIndicator={false}>
+              <View style={styles.halfSummaryBlock}>
+                <View style={styles.halfTopMetaRow}>
+                  <View style={styles.collapsedTypeBadge}>
+                    <Text style={styles.collapsedTypeBadgeText} numberOfLines={1}>
+                      {collapsedTypeLabel}
+                    </Text>
+                  </View>
+                  {sourceInfoDisplay ? (
+                    <View style={styles.collapsedSourceInfo}>
+                      <View style={[styles.collapsedSourceIcon, { borderColor: sourceInfoDisplay.color }]}>
+                        <View style={[styles.collapsedSourceIconDot, { backgroundColor: sourceInfoDisplay.color }]} />
+                      </View>
+                      <Text style={[styles.collapsedSourceInfoText, { color: sourceInfoDisplay.color }]}>
+                        {sourceInfoDisplay.label}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
 
-                <View style={styles.collapsedCopy}>
-                  <Text style={styles.collapsedTitle} numberOfLines={1}>
-                    {selectedSpot.name}
-                  </Text>
-                  <Text style={styles.collapsedAddress} numberOfLines={2}>
-                    {selectedSpotDisplayAddress}
-                  </Text>
-                  <View style={styles.collapsedMetaRow}>
-                    <Text style={styles.collapsedMetaText}>上滑查看完整地点详情</Text>
-                    <Text style={styles.collapsedMetaText}>热度 {selectedSpot.votes}</Text>
+                <View style={styles.halfMainInfoRow}>
+                  <View style={styles.halfMainInfoLeft}>
+                    <View style={styles.halfTitleRow}>
+                      <View style={styles.halfTitleWrap}>
+                        <Text style={styles.halfTitle} numberOfLines={1}>
+                          {selectedSpot.name}
+                        </Text>
+                      </View>
+                      <Text style={styles.halfDistance}>{collapsedDistanceText}</Text>
+                    </View>
+
+                    <View style={styles.halfAddressRow}>
+                      <Text style={styles.halfDistrict} numberOfLines={1}>
+                        {collapsedDistrict}
+                      </Text>
+                      <Text style={styles.halfAddressDot}>·</Text>
+                      <Text style={styles.halfAddress} numberOfLines={1}>
+                        {halfAddressDetail}
+                      </Text>
+                    </View>
+
+                    <View style={styles.halfTagsRow}>
+                      {(halfTags.length > 0 ? halfTags : ['安静']).map((tag) => (
+                        <View key={`${selectedSpot.id}-${tag}`} style={styles.collapsedTag}>
+                          <Text style={styles.collapsedTagText} numberOfLines={1}>
+                            {tag}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+
+                  <View style={styles.halfActionCluster}>
+                    <Pressable onPress={handleOpenNavigation} style={styles.halfActionButton}>
+                      <Ionicons name="navigate-outline" size={15} color="#FFFFFF" />
+                    </Pressable>
+                    <Pressable onPress={handleShareSpotInfo} style={styles.halfActionButton}>
+                      <Ionicons name="share-social-outline" size={15} color="#FFFFFF" />
+                    </Pressable>
+                  </View>
+                </View>
+
+                <View style={styles.halfFactsAndHeatRow}>
+                  <View style={styles.halfFactsLeft}>
+                    <Text style={styles.halfFactText} numberOfLines={1}>
+                      营业时间：{halfBusinessHours}
+                    </Text>
+                    <View style={styles.halfClaimRow}>
+                      <Ionicons name="checkmark-circle" size={12} color="#ED8422" />
+                      <Text style={styles.halfClaimText}>商家已认证</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.halfHeatInfo}>
+                    <Ionicons name="flame" size={14} color="#ED8422" />
+                    <Text style={styles.halfHeatText}>{selectedSpot.votes}</Text>
                   </View>
                 </View>
               </View>
-            </Pressable>
-          ) : (
-            <ScrollView
-              style={styles.sheetScroll}
-              contentContainerStyle={[
-                styles.sheetContent,
-                sheetStage === 'full' ? styles.fullSheetContent : null,
-              ]}
-              showsVerticalScrollIndicator={false}>
-              {sheetStage === 'full' ? (
-                <View style={styles.fullHeroSection}>
-                  <Pressable
-                    onPress={() => {
-                      setSheetStage('collapsed');
-                      animateSheetToStage('collapsed');
-                    }}
-                    style={styles.fullHeroCollapseButton}>
-                    <Text style={styles.fullHeroCollapseButtonText}>收起返回地图</Text>
-                  </Pressable>
-                  {selectedSpotPhotoUris[0] ? (
-                    <Image source={{ uri: selectedSpotPhotoUris[0] }} style={styles.fullHeroImage} />
-                  ) : (
-                    <View style={styles.fullHeroFallback}>
-                      <Text style={styles.fullHeroEyebrow}>地点详情</Text>
-                      <Text style={styles.fullHeroTitle}>{selectedSpot.name}</Text>
-                      <Text style={styles.fullHeroAddress} numberOfLines={2}>
-                        {selectedSpotDisplayAddress}
-                      </Text>
-                    </View>
-                  )}
+
+              {isUserOwnedSpot ? (
+                <View style={styles.ownerActionsSection}>
+                  <Text style={styles.ownerActionsTitle}>我的地点管理</Text>
+                  <View style={styles.ownerStatusPill}>
+                    <Text style={styles.ownerStatusText}>{ownerSpotStatusLabel}</Text>
+                  </View>
+
+                  <View style={styles.ownerActionsGrid}>
+                    <Pressable onPress={handleEditSpot} style={styles.ownerActionButton}>
+                      <Text style={styles.ownerActionButtonText}>编辑</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={handleDeleteSpot}
+                      style={[styles.ownerActionButton, styles.ownerDeleteButton]}>
+                      <Text style={[styles.ownerActionButtonText, styles.ownerDeleteButtonText]}>删除</Text>
+                    </Pressable>
+                    <Pressable onPress={handlePickSpotPhoto} style={styles.ownerActionButton}>
+                      <Text style={styles.ownerActionButtonText}>添加照片</Text>
+                    </Pressable>
+                    {shouldShowSubmitForReview ? (
+                      <Pressable
+                        disabled={!canSubmitForReview}
+                        onPress={handleSubmitForReview}
+                        style={[
+                          styles.ownerActionButton,
+                          styles.ownerSubmitButton,
+                          !canSubmitForReview ? styles.ownerActionButtonDisabled : null,
+                        ]}>
+                        <Text
+                          style={[
+                            styles.ownerActionButtonText,
+                            styles.ownerSubmitButtonText,
+                            !canSubmitForReview ? styles.ownerSubmitButtonTextDisabled : null,
+                          ]}>
+                          {canSubmitForReview ? '提交审核' : '审核中'}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
                 </View>
               ) : null}
 
-              <SpotDetailSheet
-                selectedSpot={selectedSpot}
-                selectedSpotPhotoUris={selectedSpotPhotoUris}
-                selectedSpotDisplayAddress={selectedSpotDisplayAddress}
-                isFavorite={isFavorite(selectedSpot.id)}
-                onToggleFavorite={() => toggleFavorite(selectedSpot.id)}
-                onClearSelected={clearSelectedSpot}
-                onSubmitForReview={handleSubmitForReview}
-                onEditSpot={handleEditSpot}
-                onDeleteSpot={handleDeleteSpot}
-                onOpenNavigation={handleOpenNavigation}
-                onShareSpotInfo={handleShareSpotInfo}
-                onPickSpotPhoto={handlePickSpotPhoto}
-                onRemoveSpotPhoto={handleRemoveSpotPhoto}
-              />
-              <View style={[styles.sheetFooterSpacer, { height: sheetFooterSpacerHeight }]} />
+              <View style={styles.halfDetailContent}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.halfPhotosRow}>
+                  {halfPhotoUris.map((uri) => (
+                    <Image key={`${selectedSpot.id}-${uri}`} source={{ uri }} style={styles.halfPhoto} />
+                  ))}
+
+                  {halfPhotoUris.length === 0 || halfPhotoUris.length === 1 ? (
+                    <View style={styles.halfPhotoPlaceholder}>
+                      <Text style={styles.halfPhotoPlaceholderText}>小狗摄影在路上</Text>
+                    </View>
+                  ) : null}
+                </ScrollView>
+
+                <View style={styles.halfDescriptionSection}>
+                  <View style={styles.halfDivider} />
+                  <Text style={styles.halfDescriptionText}>{halfDescription}</Text>
+                  <View style={styles.halfDivider} />
+                </View>
+
+                <View style={styles.halfWeeklyCard}>
+                  {halfPhotoUris[0] ? (
+                    <Image source={{ uri: halfPhotoUris[0] }} style={styles.halfWeeklyCardImage} />
+                  ) : (
+                    <View style={[styles.halfWeeklyCardImage, styles.halfWeeklyCardImagePlaceholder]} />
+                  )}
+                  <View style={styles.halfWeeklyCardOverlay}>
+                    <View style={styles.halfWeeklyCardTextWrap}>
+                      <Text style={styles.halfWeeklyCardTitle}>本周宠物友好精选</Text>
+                      <Text style={styles.halfWeeklyCardSubtitle}>本周平台精选十大宠物友好出门地点</Text>
+                    </View>
+                    <View style={styles.halfWeeklyCardButton}>
+                      <Text style={styles.halfWeeklyCardButtonText}>点击查看</Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.halfFeedbackWrap}>
+                  <Pressable style={styles.halfFeedbackButton}>
+                    <Text style={styles.halfFeedbackButtonText}>反馈地点信息</Text>
+                  </Pressable>
+                  <Text style={styles.halfFeedbackText}>
+                    该地点由平台整理维护，欢迎反馈修正；商家认领后可支持信息更新。
+                  </Text>
+                </View>
+              </View>
+
+              <View style={[styles.sheetFooterSpacer, { height: tabBarHeight + insets.bottom + 56 }]} />
+            </ScrollView>
+          ) : (
+            <ScrollView
+              style={styles.sheetScroll}
+              contentContainerStyle={styles.fullContent}
+              showsVerticalScrollIndicator={false}>
+              <View style={styles.fullTopPhotoGestureArea} {...sheetPanResponder.panHandlers}>
+                {fullHeroPhoto ? (
+                  <Image source={{ uri: fullHeroPhoto }} style={styles.fullTopPhoto} />
+                ) : (
+                  <View style={styles.fullTopPhotoPlaceholder}>
+                    <Text style={styles.fullTopPhotoPlaceholderText}>小狗摄影在路上</Text>
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.fullDetailPanel}>
+                <View style={styles.fullBackRow}>
+                  <Pressable
+                    onPress={() => {
+                      setSheetStage('half');
+                      animateSheetToStage('half');
+                    }}
+                    style={styles.fullBackButton}>
+                    <Ionicons name="chevron-back" size={16} color="#3D3D3D" />
+                    <Text style={styles.fullBackButtonText}>返回</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.fullPanelContent}>
+                  <View style={styles.fullPanelSummaryBlock}>
+                    <View style={styles.halfTopMetaRow}>
+                      <View style={styles.collapsedTypeBadge}>
+                        <Text style={styles.collapsedTypeBadgeText} numberOfLines={1}>
+                          {collapsedTypeLabel}
+                        </Text>
+                      </View>
+                      {sourceInfoDisplay ? (
+                        <View style={styles.collapsedSourceInfo}>
+                          <View style={[styles.collapsedSourceIcon, { borderColor: sourceInfoDisplay.color }]}>
+                            <View
+                              style={[styles.collapsedSourceIconDot, { backgroundColor: sourceInfoDisplay.color }]}
+                            />
+                          </View>
+                          <Text style={[styles.collapsedSourceInfoText, { color: sourceInfoDisplay.color }]}>
+                            {sourceInfoDisplay.label}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+
+                    <View style={styles.fullPanelTitleRow}>
+                      <Text style={styles.fullPanelTitle} numberOfLines={2}>
+                        {selectedSpot.name}
+                        {fullDistanceText ? <Text style={styles.fullPanelDistance}> {fullDistanceText}</Text> : null}
+                      </Text>
+                    </View>
+
+                    <View style={styles.fullPanelAddressRow}>
+                      <Text style={styles.fullPanelDistrict}>{collapsedDistrict}</Text>
+                      <Text style={styles.fullPanelAddressDot}>·</Text>
+                      <Text style={styles.fullPanelAddress} numberOfLines={2}>
+                        {halfAddressDetail}
+                      </Text>
+                    </View>
+
+                    <View style={styles.fullPanelTagsRow}>
+                      {(halfTags.length > 0 ? halfTags : ['安静']).map((tag) => (
+                        <View key={`${selectedSpot.id}-${tag}-full`} style={styles.collapsedTag}>
+                          <Text style={styles.collapsedTagText} numberOfLines={1}>
+                            {tag}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+
+                    <View style={styles.fullPanelInfoActionRow}>
+                      <View style={styles.fullPanelInfoLeft}>
+                        <Text style={styles.fullPanelInfoText}>营业时间：{halfBusinessHours}</Text>
+                        <View style={styles.halfClaimRow}>
+                          <Ionicons name="checkmark-circle" size={12} color="#ED8422" />
+                          <Text style={styles.halfClaimText}>商家已认证</Text>
+                        </View>
+                      </View>
+                      <View style={styles.fullPanelInfoRight}>
+                        <View style={styles.fullPanelActionButtons}>
+                          <Pressable onPress={handleOpenNavigation} style={styles.halfActionButton}>
+                            <Ionicons name="navigate-outline" size={15} color="#FFFFFF" />
+                          </Pressable>
+                          <Pressable onPress={handleShareSpotInfo} style={styles.halfActionButton}>
+                            <Ionicons name="share-social-outline" size={15} color="#FFFFFF" />
+                          </Pressable>
+                        </View>
+                        <View style={styles.fullPanelHeatRow}>
+                          <Ionicons name="flame" size={14} color="#ED8422" />
+                          <Text style={styles.halfHeatText}>{selectedSpot.votes}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.fullPanelDivider} />
+                  <View style={styles.fullPanelDescription}>
+                    <Text style={styles.fullPanelDescriptionText}>{halfDescription}</Text>
+                  </View>
+                  <View style={styles.fullPanelDivider} />
+
+                  <View style={styles.halfWeeklyCard}>
+                    {halfPhotoUris[0] ? (
+                      <Image source={{ uri: halfPhotoUris[0] }} style={styles.halfWeeklyCardImage} />
+                    ) : (
+                      <View style={[styles.halfWeeklyCardImage, styles.halfWeeklyCardImagePlaceholder]} />
+                    )}
+                    <View style={styles.halfWeeklyCardOverlay}>
+                      <View style={styles.halfWeeklyCardTextWrap}>
+                        <Text style={styles.halfWeeklyCardTitle}>本周宠物友好精选</Text>
+                        <Text style={styles.halfWeeklyCardSubtitle}>本周平台精选十大宠物友好出门地点</Text>
+                      </View>
+                      <View style={styles.halfWeeklyCardButton}>
+                        <Text style={styles.halfWeeklyCardButtonText}>点击查看</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.halfFeedbackWrap}>
+                    <Pressable style={styles.halfFeedbackButton}>
+                      <Text style={styles.halfFeedbackButtonText}>反馈地点信息</Text>
+                    </Pressable>
+                    <Text style={styles.halfFeedbackText}>
+                      该地点由平台整理维护，欢迎反馈修正；商家认领后可支持信息更新。
+                    </Text>
+                  </View>
+
+                  {isUserOwnedSpot ? (
+                    <View style={styles.ownerActionsSection}>
+                      <Text style={styles.ownerActionsTitle}>我的地点管理</Text>
+                      <View style={styles.ownerStatusPill}>
+                        <Text style={styles.ownerStatusText}>{ownerSpotStatusLabel}</Text>
+                      </View>
+                      <View style={styles.ownerActionsGrid}>
+                        <Pressable onPress={handleEditSpot} style={styles.ownerActionButton}>
+                          <Text style={styles.ownerActionButtonText}>编辑</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={handleDeleteSpot}
+                          style={[styles.ownerActionButton, styles.ownerDeleteButton]}>
+                          <Text style={[styles.ownerActionButtonText, styles.ownerDeleteButtonText]}>删除</Text>
+                        </Pressable>
+                        <Pressable onPress={handlePickSpotPhoto} style={styles.ownerActionButton}>
+                          <Text style={styles.ownerActionButtonText}>添加照片</Text>
+                        </Pressable>
+                        {shouldShowSubmitForReview ? (
+                          <Pressable
+                            disabled={!canSubmitForReview}
+                            onPress={handleSubmitForReview}
+                            style={[
+                              styles.ownerActionButton,
+                              styles.ownerSubmitButton,
+                              !canSubmitForReview ? styles.ownerActionButtonDisabled : null,
+                            ]}>
+                            <Text
+                              style={[
+                                styles.ownerActionButtonText,
+                                styles.ownerSubmitButtonText,
+                                !canSubmitForReview ? styles.ownerSubmitButtonTextDisabled : null,
+                              ]}>
+                              {canSubmitForReview ? '提交审核' : '审核中'}
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    </View>
+                  ) : null}
+
+                  <View style={styles.fullPanelDivider} />
+                  <View style={styles.fullCommentsPlaceholder}>
+                    <Text style={styles.fullCommentsPlaceholderText}>精选评论区（后面再做）</Text>
+                  </View>
+                </View>
+              </View>
+              <View style={[styles.sheetFooterSpacer, { height: tabBarHeight + insets.bottom + 56 }]} />
             </ScrollView>
           )}
         </Animated.View>
@@ -1084,6 +1702,129 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: theme.colors.primary,
+  },
+  filterQuickEntryWrap: {
+    position: 'absolute',
+    right: 16,
+  },
+  filterQuickEntryButton: {
+    minWidth: 76,
+    height: 36,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    ...theme.shadows.floating,
+  },
+  filterQuickEntryPressed: {
+    opacity: 0.9,
+  },
+  filterQuickEntryText: {
+    color: '#0F172A',
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 14,
+  },
+  filterOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'flex-end',
+    zIndex: 20,
+  },
+  filterBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(17,24,39,0.24)',
+  },
+  filterPanel: {
+    marginHorizontal: 16,
+    marginBottom: 24,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E6E0D9',
+    backgroundColor: '#FFFEFF',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 10,
+  },
+  filterPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  filterPanelTitle: {
+    color: '#333333',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  filterCloseButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    backgroundColor: '#F5F2EE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterOptionsWrap: {
+    gap: 8,
+  },
+  filterOptionItem: {
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E8E3DC',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  filterOptionItemActive: {
+    borderColor: '#F2C596',
+    backgroundColor: '#FFF8EF',
+  },
+  filterOptionText: {
+    color: '#3C3C3C',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  filterOptionTextActive: {
+    color: '#7E4D1F',
+  },
+  filterActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  filterSecondaryButton: {
+    flex: 1,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#D9D3CC',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterSecondaryButtonText: {
+    color: '#4C4C4C',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  filterPrimaryButton: {
+    flex: 1,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: '#ED8422',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterPrimaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   quickActions: {
     position: 'absolute',
@@ -1172,27 +1913,35 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    backgroundColor: theme.colors.cardBackground,
-    ...theme.shadows.floating,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    backgroundColor: '#FFFEFF',
   },
   sheetHandleArea: {
     alignItems: 'center',
-    paddingTop: 12,
-    paddingBottom: 10,
+    paddingTop: 4,
+    paddingBottom: 2,
   },
   sheetHandle: {
-    width: 48,
-    height: 5,
-    borderRadius: theme.radii.pill,
-    backgroundColor: theme.colors.border,
+    width: 33,
+    height: 14,
+    borderRadius: 999,
+    backgroundColor: '#F5E8DE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetHandleInner: {
+    width: 19,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: '#D9B79E',
   },
   sheetScroll: {
     flex: 1,
   },
   sheetContent: {
-    paddingHorizontal: theme.spacing.lg,
+    paddingHorizontal: 16,
+    paddingTop: 4,
     paddingBottom: 12,
   },
   fullSheetContent: {
@@ -1201,130 +1950,725 @@ const styles = StyleSheet.create({
   sheetFooterSpacer: {
     width: '100%',
   },
-  collapsedCard: {
-    marginHorizontal: theme.spacing.lg,
-    marginTop: 4,
-    borderRadius: theme.radii.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.cardBackground,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.md,
-    ...theme.shadows.card,
+  collapsedSummaryBlock: {
+    width: 343,
+    marginHorizontal: 16,
+    paddingTop: 0,
+    paddingBottom: 0,
+    gap: 6,
+    alignItems: 'flex-start',
   },
-  collapsedCardPressed: {
-    opacity: 0.92,
+  collapsedSummaryBlockPressed: {
+    opacity: 0.88,
   },
-  collapsedCardRow: {
+  collapsedTopMetaRow: {
+    width: 343,
+    height: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+  },
+  collapsedTypeBadge: {
+    height: 20,
+    borderRadius: 20,
+    backgroundColor: '#633817',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    justifyContent: 'center',
+  },
+  collapsedTypeBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 8,
+    fontWeight: '900',
+    lineHeight: 10,
+  },
+  collapsedSourceInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  collapsedSourceIcon: {
+    width: 12,
+    height: 12,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: '#ED8422',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  collapsedSourceIconDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: '#ED8422',
+  },
+  collapsedSourceInfoText: {
+    color: '#ED8422',
+    fontSize: 10,
+    fontWeight: '900',
+    lineHeight: 12,
+  },
+  collapsedSummaryRow: {
+    width: 343,
+    height: 68,
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  collapsedSummaryLeft: {
+    width: 230,
+    height: 65,
+    flexDirection: 'column',
+    gap: 2,
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+  },
+  collapsedTitleRow: {
+    width: 230,
+    height: 28,
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  collapsedTitleWrap: {
+    flexGrow: 0,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  collapsedTitle: {
+    color: '#404040',
+    fontSize: 20,
+    fontWeight: '700',
+    lineHeight: 28,
+  },
+  collapsedDistance: {
+    flexShrink: 0,
+    color: '#404040',
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 14,
+  },
+  collapsedAddressRow: {
+    width: 230,
+    height: 14,
+    flexDirection: 'row',
+    gap: 4,
+    alignItems: 'center',
+  },
+  collapsedDistrict: {
+    flexShrink: 0,
+    color: '#424242',
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 14,
+  },
+  collapsedAddressDot: {
+    flexShrink: 0,
+    color: '#7A7A7A',
+    fontSize: 10,
+    lineHeight: 12,
+  },
+  collapsedAddress: {
+    flex: 1,
+    color: '#424242',
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 14,
+  },
+  collapsedTagsRow: {
+    width: 230,
+    height: 19,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  collapsedTag: {
+    minWidth: 33,
+    height: 13,
+    borderRadius: 999,
+    backgroundColor: '#ED8422',
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  collapsedTagText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '400',
+    lineHeight: 12,
   },
   collapsedPreviewImage: {
-    width: 88,
-    height: 88,
-    borderRadius: theme.radii.md,
-    backgroundColor: theme.colors.surfaceMuted,
+    width: 103,
+    height: 68,
+    borderRadius: 0,
+    backgroundColor: '#D9D9D9',
   },
   collapsedPreviewPlaceholder: {
-    width: 88,
-    height: 88,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.primarySoft,
+    width: 103,
+    height: 68,
+    borderRadius: 0,
+    backgroundColor: 'rgba(217,217,217,1)',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 10,
   },
-  collapsedPreviewPlaceholderEyebrow: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    color: theme.colors.primary,
-  },
   collapsedPreviewPlaceholderText: {
-    marginTop: 6,
+    color: '#404040',
     fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.textSecondary,
+    fontWeight: '600',
+    lineHeight: 16,
+    textAlign: 'center',
   },
-  collapsedCopy: {
-    flex: 1,
-    minHeight: 88,
-    justifyContent: 'center',
+  halfContent: {
+    width: 342,
+    alignSelf: 'center',
+    gap: 9,
+    paddingBottom: 8,
   },
-  collapsedTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: theme.colors.textPrimary,
+  halfSummaryBlock: {
+    width: 342,
+    gap: 9,
   },
-  collapsedAddress: {
-    marginTop: 6,
-    fontSize: 13,
-    lineHeight: 18,
-    color: theme.colors.textSecondary,
-  },
-  collapsedMetaRow: {
-    marginTop: 8,
+  halfTopMetaRow: {
+    width: 342,
+    height: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: theme.spacing.sm,
   },
-  collapsedMetaText: {
+  halfMainInfoRow: {
+    width: 342,
+    height: 65,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  halfMainInfoLeft: {
+    flex: 1,
+    minWidth: 0,
+    height: 61,
+    gap: 2,
+    paddingRight: 10,
+  },
+  halfTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 28,
+    justifyContent: 'flex-start',
+  },
+  halfTitleWrap: {
+    flexGrow: 0,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  halfTitle: {
+    color: '#404040',
+    fontSize: 20,
+    fontWeight: '700',
+    lineHeight: 28,
+  },
+  halfDistance: {
+    flexShrink: 0,
+    color: '#404040',
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 14,
+  },
+  halfAddressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    height: 14,
+  },
+  halfDistrict: {
+    flexShrink: 0,
+    color: '#424242',
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 14,
+  },
+  halfAddressDot: {
+    flexShrink: 0,
+    color: '#7A7A7A',
+    fontSize: 10,
+    lineHeight: 12,
+  },
+  halfAddress: {
+    flex: 1,
+    color: '#424242',
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 14,
+  },
+  halfTagsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    height: 19,
+  },
+  halfActionCluster: {
+    width: 68,
+    height: 26,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  halfActionButton: {
+    width: 26,
+    height: 26,
+    borderRadius: 999,
+    backgroundColor: '#ED8422',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  halfFactsAndHeatRow: {
+    width: 342,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+  },
+  halfFactsLeft: {
+    width: 170,
+    height: 32,
+    justifyContent: 'space-between',
+  },
+  halfFactText: {
+    color: '#686868',
+    fontSize: 12,
+    lineHeight: 14,
+  },
+  halfClaimRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  halfClaimText: {
+    color: '#ED8422',
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 14,
+  },
+  halfHeatInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  halfHeatText: {
+    color: '#ED8422',
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 16,
+  },
+  halfDetailContent: {
+    width: 342,
+    gap: 10,
+  },
+  ownerActionsSection: {
+    width: 342,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#ECE8E2',
+    backgroundColor: '#FFFEFF',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  ownerActionsTitle: {
+    color: '#4B453F',
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 14,
+  },
+  ownerStatusPill: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    backgroundColor: '#F4F1EC',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  ownerStatusText: {
+    color: '#5F5A53',
+    fontSize: 11,
+    fontWeight: '600',
+    lineHeight: 13,
+  },
+  ownerActionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  ownerActionButton: {
+    minWidth: 72,
+    height: 30,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#DAD4CD',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  ownerActionButtonDisabled: {
+    backgroundColor: '#F1EFEB',
+    borderColor: '#E4DED7',
+  },
+  ownerActionButtonText: {
+    color: '#3F3A33',
     fontSize: 12,
     fontWeight: '600',
-    color: theme.colors.primary,
+    lineHeight: 14,
   },
-  fullHeroSection: {
-    marginBottom: theme.spacing.sm,
+  ownerSubmitButton: {
+    borderColor: '#2EA65A',
+    backgroundColor: '#EAF7EF',
+  },
+  ownerSubmitButtonText: {
+    color: '#1E7E44',
+  },
+  ownerSubmitButtonTextDisabled: {
+    color: '#8B958D',
+  },
+  ownerDeleteButton: {
+    borderColor: '#F1C8C8',
+    backgroundColor: '#FFF6F6',
+  },
+  ownerDeleteButtonText: {
+    color: '#B34747',
+  },
+  halfPhotosRow: {
+    gap: 6,
+  },
+  halfPhoto: {
+    width: 167,
+    height: 105,
+    resizeMode: 'cover',
+    backgroundColor: '#D9D9D9',
+  },
+  halfPhotoPlaceholder: {
+    width: 167,
+    height: 105,
+    backgroundColor: 'rgba(217,217,217,1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  halfPhotoPlaceholderText: {
+    color: '#404040',
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  halfDescriptionSection: {
+    width: 342,
+    minHeight: 67,
+    gap: 8,
+    justifyContent: 'center',
+  },
+  halfDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(66,66,66,0.45)',
+  },
+  halfDescriptionText: {
+    color: '#5E5E5E',
+    fontSize: 12,
+    lineHeight: 15,
+  },
+  halfWeeklyCard: {
+    width: 342,
+    height: 112,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#CFCFCF',
     position: 'relative',
   },
-  fullHeroCollapseButton: {
-    borderRadius: theme.radii.pill,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  fullHeroCollapseButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.textPrimary,
-  },
-  fullHeroImage: {
+  halfWeeklyCardImage: {
     width: '100%',
-    height: 220,
-    borderRadius: theme.radii.lg,
-    backgroundColor: theme.colors.surfaceMuted,
+    height: '100%',
   },
-  fullHeroFallback: {
-    borderRadius: theme.radii.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.primarySoft,
-    paddingHorizontal: theme.spacing.md,
-    paddingTop: theme.spacing.xl + 22,
-    paddingBottom: theme.spacing.lg,
+  halfWeeklyCardImagePlaceholder: {
+    backgroundColor: '#C8C8C8',
   },
-  fullHeroEyebrow: {
+  halfWeeklyCardOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(11,19,36,0.46)',
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  halfWeeklyCardTextWrap: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  halfWeeklyCardTitle: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '700',
+    lineHeight: 28,
+  },
+  halfWeeklyCardSubtitle: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 14,
+  },
+  halfWeeklyCardButton: {
+    width: 68,
+    height: 23,
+    borderRadius: 999,
+    backgroundColor: '#2EA65A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  halfWeeklyCardButtonText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 13,
+  },
+  halfFeedbackWrap: {
+    width: 342,
+    gap: 7,
+    paddingBottom: 2,
+  },
+  halfFeedbackButton: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    backgroundColor: '#2F2F2F',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  halfFeedbackButtonText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 13,
+  },
+  halfFeedbackText: {
+    color: '#6E6E6E',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  fullContent: {
+    width: '100%',
+    paddingBottom: 8,
+  },
+  fullTopPhotoGestureArea: {
+    width: '100%',
+  },
+  fullTopPhoto: {
+    width: '100%',
+    height: 280,
+    resizeMode: 'cover',
+    backgroundColor: '#D9D9D9',
+  },
+  fullTopPhotoPlaceholder: {
+    width: '100%',
+    height: 280,
+    backgroundColor: 'rgba(217,217,217,1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  fullTopPhotoPlaceholderText: {
+    color: '#434343',
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 19,
+    textAlign: 'center',
+  },
+  fullDetailPanel: {
+    marginTop: -20,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    backgroundColor: '#FFFEFF',
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  fullBackRow: {
+    width: 342,
+    alignSelf: 'center',
+    marginBottom: 6,
+  },
+  fullBackButton: {
+    alignSelf: 'flex-start',
+    height: 30,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    backgroundColor: '#F5F2EE',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  fullBackButtonText: {
+    color: '#3D3D3D',
     fontSize: 12,
     fontWeight: '700',
-    color: theme.colors.primary,
+    lineHeight: 14,
   },
-  fullHeroTitle: {
-    marginTop: 6,
-    fontSize: 24,
+  fullPanelContent: {
+    width: 342,
+    alignSelf: 'center',
+    gap: 9,
+  },
+  fullPanelSummaryBlock: {
+    gap: 8,
+  },
+  fullPanelTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  fullPanelTitle: {
+    flex: 1,
+    color: '#3C3C3C',
+    fontSize: 23,
+    fontWeight: '700',
     lineHeight: 30,
-    fontWeight: '800',
-    color: theme.colors.textPrimary,
   },
-  fullHeroAddress: {
-    marginTop: 8,
+  fullPanelDistance: {
+    color: '#404040',
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 16,
+  },
+  fullPanelAddressRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 4,
+  },
+  fullPanelDistrict: {
+    flexShrink: 0,
+    color: '#444444',
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  fullPanelAddressDot: {
+    flexShrink: 0,
+    color: '#777777',
+    fontSize: 10,
+    lineHeight: 15,
+  },
+  fullPanelAddress: {
+    flex: 1,
+    color: '#444444',
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  fullPanelTagsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexWrap: 'wrap',
+  },
+  fullPanelInfoActionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  fullPanelInfoLeft: {
+    flex: 1,
+    gap: 4,
+  },
+  fullPanelInfoText: {
+    color: '#686868',
+    fontSize: 12,
+    lineHeight: 14,
+  },
+  fullPanelInfoRight: {
+    width: 86,
+    gap: 6,
+    alignItems: 'flex-end',
+  },
+  fullPanelActionButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  fullPanelHeatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  fullPanelDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(66,66,66,0.45)',
+  },
+  fullPanelDescription: {
+    minHeight: 74,
+    justifyContent: 'center',
+  },
+  fullPanelDescriptionText: {
+    color: '#5E5E5E',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  fullCommentsPlaceholder: {
+    height: 160,
+    borderRadius: 10,
+    backgroundColor: '#F3F3F3',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  fullCommentsPlaceholderText: {
+    color: '#9A9A9A',
+    fontSize: 12,
+    lineHeight: 16,
+    textAlign: 'center',
+  },
+  stageSkeletonCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#EDE9E6',
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+    gap: 10,
+  },
+  stageSkeletonEyebrow: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#8C8C8C',
+  },
+  stageSkeletonTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#404040',
+  },
+  stageSkeletonText: {
     fontSize: 13,
-    lineHeight: 19,
-    color: theme.colors.textSecondary,
+    lineHeight: 18,
+    color: '#616161',
+  },
+  stageSkeletonBlockLarge: {
+    width: '100%',
+    height: 88,
+    borderRadius: 12,
+    backgroundColor: '#F1F1F1',
+  },
+  stageSkeletonBlockRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  stageSkeletonBlockSmall: {
+    flex: 1,
+    height: 48,
+    borderRadius: 10,
+    backgroundColor: '#F4F4F4',
+  },
+  stageSkeletonHint: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#7A7A7A',
   },
   modalBackdrop: {
     flex: 1,
