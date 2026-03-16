@@ -1,8 +1,8 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
@@ -61,6 +61,7 @@ const ALL_MARKER_FILTER_KEYS = MARKER_FILTER_OPTIONS.map((item) => item.key);
 type SheetStage = 'collapsed' | 'half' | 'full';
 const COLLAPSED_VISIBLE_HEIGHT = 190;
 const HALF_VISIBLE_HEIGHT = 523;
+const SHEET_HANDLE_AREA_HEIGHT = 20;
 
 const COLLAPSED_TYPE_LABELS: Record<SpotType, string> = {
   park: '公园',
@@ -205,10 +206,6 @@ export default function TabOneScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const { height: windowHeight } = useWindowDimensions();
   const mapRef = useRef<MapView | null>(null);
-  const [activeReturnContext, setActiveReturnContext] = useState<{
-    returnTo: 'my-spots' | 'my-favorites';
-    returnStatus?: string;
-  } | null>(null);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [editingSpotId, setEditingSpotId] = useState<string | null>(null);
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
@@ -253,28 +250,12 @@ export default function TabOneScreen() {
   } = usePetMapStore();
 
   const inFlightAddressSpotIdsRef = useRef<Set<string>>(new Set());
+  const markerScaleValuesRef = useRef<Record<string, Animated.Value>>({});
+  const previousSelectedSpotIdRef = useRef<string | null>(null);
+  const sheetSyncedSpotIdRef = useRef<string | null>(null);
   const amapWebKey = process.env.EXPO_PUBLIC_AMAP_WEB_KEY?.trim() ?? '';
   const returnToParam = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
-  const returnStatusParam = Array.isArray(params.returnStatus) ? params.returnStatus[0] : params.returnStatus;
-  const returnContext =
-    activeReturnContext?.returnTo === 'my-spots'
-      ? {
-          label: '返回我的地点',
-          onPress: () =>
-            router.push({
-              pathname: '/my-spots',
-              params: activeReturnContext.returnStatus
-                ? { status: activeReturnContext.returnStatus }
-                : undefined,
-            }),
-        }
-        : activeReturnContext?.returnTo === 'my-favorites'
-          ? {
-              label: '返回我的收藏',
-              onPress: () => router.push('/my-favorites'),
-            }
-          : null;
-  const fullTopInset = insets.top + (returnContext ? 132 : 108);
+  const fullTopInset = insets.top + 108;
   const collapsedSheetHeight = COLLAPSED_VISIBLE_HEIGHT;
   const availableSheetHeight = Math.max(windowHeight - fullTopInset, collapsedSheetHeight + 72);
   const sheetBottomOverlap = Math.max(20, Math.min(tabBarHeight - insets.bottom, 28));
@@ -288,6 +269,8 @@ export default function TabOneScreen() {
   const fullOffset = 0;
   const halfOffset = Math.max(fullSheetHeight - halfSheetHeight, 0);
   const collapsedOffset = Math.max(fullSheetHeight - collapsedSheetHeight, 0);
+  const halfVisibleHeight = Math.max(fullSheetHeight - halfOffset - sheetBottomOverlap, 0);
+  const halfScrollViewportHeight = Math.max(halfVisibleHeight - SHEET_HANDLE_AREA_HEIGHT, 220);
   const sheetContainerBottomInset = 0;
   const quickActionsBottom = Math.max(sheetVisibleHeight + 16, insets.bottom + 120);
   const sheetTranslateY = useRef(new Animated.Value(collapsedOffset)).current;
@@ -301,20 +284,8 @@ export default function TabOneScreen() {
       return;
     }
 
-    setActiveReturnContext({
-      returnTo: returnToParam,
-      returnStatus: returnToParam === 'my-spots' ? returnStatusParam : undefined,
-    });
     router.replace('/(tabs)');
-  }, [returnStatusParam, returnToParam]);
-
-  useFocusEffect(
-    useCallback(() => {
-      return () => {
-        setActiveReturnContext(null);
-      };
-    }, [])
-  );
+  }, [returnToParam]);
 
   async function requestAmapReverseGeocode(lat: number, lng: number) {
     if (!amapWebKey) {
@@ -514,7 +485,10 @@ export default function TabOneScreen() {
   }
 
   useEffect(() => {
-    if (!selectedSpot) {
+    const selectedSpotId = selectedSpot?.id ?? null;
+
+    if (!selectedSpotId) {
+      sheetSyncedSpotIdRef.current = null;
       setSheetStage('collapsed');
       sheetTranslateY.setValue(collapsedOffset);
       sheetVisibleHeightRef.current = 0;
@@ -522,6 +496,11 @@ export default function TabOneScreen() {
       return;
     }
 
+    if (sheetSyncedSpotIdRef.current === selectedSpotId) {
+      return;
+    }
+
+    sheetSyncedSpotIdRef.current = selectedSpotId;
     setSheetStage('collapsed');
     sheetTranslateY.setValue(collapsedOffset);
     sheetOffsetRef.current = collapsedOffset;
@@ -529,7 +508,7 @@ export default function TabOneScreen() {
     sheetVisibleHeightRef.current = nextCollapsedVisibleHeight;
     setSheetVisibleHeight(nextCollapsedVisibleHeight);
     recenterSelectedSpot(250);
-  }, [collapsedOffset, collapsedSheetHeight, selectedSpot, sheetBottomOverlap, sheetTranslateY]);
+  }, [collapsedOffset, collapsedSheetHeight, selectedSpot?.id, sheetBottomOverlap, sheetTranslateY]);
 
   useEffect(() => {
     if (!selectedSpot) {
@@ -1050,6 +1029,7 @@ export default function TabOneScreen() {
         : '仅本地保存';
   const shouldShowSubmitForReview = isUserOwnedSpot && !selectedSpot?.verified;
   const canSubmitForReview = isUserOwnedSpot && selectedSpot?.submissionStatus !== 'pending_review';
+  const isSelectedSpotFavorite = selectedSpot ? isFavorite(selectedSpot.id) : false;
   const visibleSpots = useMemo(
     () =>
       spots.filter((spot) => {
@@ -1085,22 +1065,39 @@ export default function TabOneScreen() {
     setSelectedMarkerFilters(ALL_MARKER_FILTER_KEYS);
   }
 
+  function getMarkerScaleValue(spotId: string) {
+    if (!markerScaleValuesRef.current[spotId]) {
+      markerScaleValuesRef.current[spotId] = new Animated.Value(1);
+    }
+
+    return markerScaleValuesRef.current[spotId];
+  }
+
+  useEffect(() => {
+    const nextSelectedSpotId = selectedSpot?.id ?? null;
+    const previousSelectedSpotId = previousSelectedSpotIdRef.current;
+
+    if (previousSelectedSpotId && previousSelectedSpotId !== nextSelectedSpotId) {
+      Animated.timing(getMarkerScaleValue(previousSelectedSpotId), {
+        toValue: 1,
+        duration: 130,
+        useNativeDriver: true,
+      }).start();
+    }
+
+    if (nextSelectedSpotId) {
+      Animated.timing(getMarkerScaleValue(nextSelectedSpotId), {
+        toValue: 1.08,
+        duration: 130,
+        useNativeDriver: true,
+      }).start();
+    }
+
+    previousSelectedSpotIdRef.current = nextSelectedSpotId;
+  }, [selectedSpot?.id]);
+
   return (
     <View style={styles.container}>
-      {returnContext ? (
-        <View style={styles.returnEntryWrap}>
-          <Pressable
-            onPress={() => {
-              setActiveReturnContext(null);
-              returnContext.onPress();
-            }}
-            style={({ pressed }) => [styles.returnEntry, pressed ? styles.returnEntryPressed : null]}>
-            <Text style={styles.returnEntryLabel}>{returnContext.label}</Text>
-            <Text style={styles.returnEntryAction}>返回</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
       <MapView
         ref={mapRef}
         style={styles.map}
@@ -1115,6 +1112,7 @@ export default function TabOneScreen() {
         showsUserLocation>
         {visibleSpots.map((spot) => {
           const isSelected = selectedSpot?.id === spot.id;
+          const markerScale = getMarkerScaleValue(spot.id);
           const markerVisualCategory = resolveMarkerVisualCategory(spot);
 
           if (!markerVisualCategory) {
@@ -1127,7 +1125,9 @@ export default function TabOneScreen() {
               coordinate={{ latitude: spot.lat, longitude: spot.lng }}
               tracksViewChanges={false}
               onPress={() => setSelectedSpot(spot.id)}>
-              <View style={styles.markerContainer}>{renderMarkerVisual(markerVisualCategory, isSelected)}</View>
+              <Animated.View style={[styles.markerContainer, { transform: [{ scale: markerScale }] }]}>
+                {renderMarkerVisual(markerVisualCategory, isSelected)}
+              </Animated.View>
             </Marker>
           );
         })}
@@ -1135,20 +1135,13 @@ export default function TabOneScreen() {
 
       <MapQuickActions
         bottom={quickActionsBottom}
+        isFilterActive={isFilterPanelVisible}
         favoriteCount={favoriteCount}
         userSpotCount={userSpots.length}
+        onPressFilter={() => setIsFilterPanelVisible(true)}
         onPressFavorites={() => router.push('/my-favorites')}
         onPressMySpots={() => router.push('/my-spots')}
       />
-
-      <View pointerEvents="box-none" style={[styles.filterQuickEntryWrap, { bottom: quickActionsBottom + 112 }]}>
-        <Pressable
-          onPress={() => setIsFilterPanelVisible(true)}
-          style={({ pressed }) => [styles.filterQuickEntryButton, pressed ? styles.filterQuickEntryPressed : null]}>
-          <Ionicons name="options-outline" size={16} color="#0F172A" />
-          <Text style={styles.filterQuickEntryText}>筛选</Text>
-        </Pressable>
-      </View>
 
       {isFilterPanelVisible ? (
         <View style={styles.filterOverlay}>
@@ -1284,11 +1277,13 @@ export default function TabOneScreen() {
               </View>
             </Pressable>
           ) : sheetStage === 'half' ? (
-            <ScrollView
-              style={styles.sheetScroll}
-              contentContainerStyle={styles.halfContent}
-              showsVerticalScrollIndicator={false}>
-              <View style={styles.halfSummaryBlock}>
+            <View style={[styles.halfScrollViewport, { height: halfScrollViewportHeight }]}>
+              <ScrollView
+                style={styles.sheetScroll}
+                contentContainerStyle={[styles.halfContent, styles.halfContentScrollable]}
+                nestedScrollEnabled
+                showsVerticalScrollIndicator={false}>
+                <View style={styles.halfSummaryBlock}>
                 <View style={styles.halfTopMetaRow}>
                   <View style={styles.collapsedTypeBadge}>
                     <Text style={styles.collapsedTypeBadgeText} numberOfLines={1}>
@@ -1345,6 +1340,14 @@ export default function TabOneScreen() {
                     </Pressable>
                     <Pressable onPress={handleShareSpotInfo} style={styles.halfActionButton}>
                       <Ionicons name="share-social-outline" size={15} color="#FFFFFF" />
+                    </Pressable>
+                    <Pressable
+                      onPress={() => selectedSpot && toggleFavorite(selectedSpot.id)}
+                      style={[
+                        styles.halfActionButton,
+                        isSelectedSpotFavorite ? styles.halfActionButtonActive : null,
+                      ]}>
+                      <Ionicons name={isSelectedSpotFavorite ? 'heart' : 'heart-outline'} size={15} color="#FFFFFF" />
                     </Pressable>
                   </View>
                 </View>
@@ -1458,14 +1461,15 @@ export default function TabOneScreen() {
                 </View>
               </View>
 
-              <View style={[styles.sheetFooterSpacer, { height: tabBarHeight + insets.bottom + 56 }]} />
-            </ScrollView>
+                <View style={[styles.sheetFooterSpacer, { height: tabBarHeight + insets.bottom + 56 }]} />
+              </ScrollView>
+            </View>
           ) : (
             <ScrollView
               style={styles.sheetScroll}
               contentContainerStyle={styles.fullContent}
               showsVerticalScrollIndicator={false}>
-              <View style={styles.fullTopPhotoGestureArea} {...sheetPanResponder.panHandlers}>
+              <View style={styles.fullTopPhotoGestureArea}>
                 {fullHeroPhoto ? (
                   <Image source={{ uri: fullHeroPhoto }} style={styles.fullTopPhoto} />
                 ) : (
@@ -1549,6 +1553,18 @@ export default function TabOneScreen() {
                           </Pressable>
                           <Pressable onPress={handleShareSpotInfo} style={styles.halfActionButton}>
                             <Ionicons name="share-social-outline" size={15} color="#FFFFFF" />
+                          </Pressable>
+                          <Pressable
+                            onPress={() => selectedSpot && toggleFavorite(selectedSpot.id)}
+                            style={[
+                              styles.halfActionButton,
+                              isSelectedSpotFavorite ? styles.halfActionButtonActive : null,
+                            ]}>
+                            <Ionicons
+                              name={isSelectedSpotFavorite ? 'heart' : 'heart-outline'}
+                              size={15}
+                              color="#FFFFFF"
+                            />
                           </Pressable>
                         </View>
                         <View style={styles.fullPanelHeatRow}>
@@ -1669,66 +1685,6 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
-  },
-  returnEntryWrap: {
-    paddingHorizontal: theme.spacing.lg,
-    paddingTop: 6,
-    paddingBottom: 6,
-    backgroundColor: theme.colors.pageBackground,
-  },
-  returnEntry: {
-    minHeight: 40,
-    borderRadius: theme.radii.sm,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.cardBackground,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: theme.spacing.sm,
-  },
-  returnEntryPressed: {
-    opacity: 0.86,
-  },
-  returnEntryLabel: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '700',
-    color: theme.colors.textPrimary,
-  },
-  returnEntryAction: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.primary,
-  },
-  filterQuickEntryWrap: {
-    position: 'absolute',
-    right: 16,
-  },
-  filterQuickEntryButton: {
-    minWidth: 76,
-    height: 36,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255, 255, 255, 0.98)',
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    ...theme.shadows.floating,
-  },
-  filterQuickEntryPressed: {
-    opacity: 0.9,
-  },
-  filterQuickEntryText: {
-    color: '#0F172A',
-    fontSize: 12,
-    fontWeight: '700',
-    lineHeight: 14,
   },
   filterOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1939,6 +1895,11 @@ const styles = StyleSheet.create({
   sheetScroll: {
     flex: 1,
   },
+  halfScrollViewport: {
+    width: '100%',
+    flexGrow: 0,
+    flexShrink: 0,
+  },
   sheetContent: {
     paddingHorizontal: 16,
     paddingTop: 4,
@@ -2126,6 +2087,9 @@ const styles = StyleSheet.create({
     gap: 9,
     paddingBottom: 8,
   },
+  halfContentScrollable: {
+    paddingBottom: 20,
+  },
   halfSummaryBlock: {
     width: 342,
     gap: 9,
@@ -2209,7 +2173,7 @@ const styles = StyleSheet.create({
     height: 19,
   },
   halfActionCluster: {
-    width: 68,
+    width: 110,
     height: 26,
     flexDirection: 'row',
     alignItems: 'center',
@@ -2222,6 +2186,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#ED8422',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  halfActionButtonActive: {
+    backgroundColor: '#67A735',
   },
   halfFactsAndHeatRow: {
     width: 342,
@@ -2585,7 +2552,7 @@ const styles = StyleSheet.create({
     lineHeight: 14,
   },
   fullPanelInfoRight: {
-    width: 86,
+    width: 122,
     gap: 6,
     alignItems: 'flex-end',
   },
