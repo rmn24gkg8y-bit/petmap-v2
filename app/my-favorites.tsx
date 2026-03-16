@@ -14,6 +14,8 @@ import {
 import Svg, { Path } from 'react-native-svg';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import HeatIcon from '@/assets/icons/heat-icon.svg';
+import SearchIcon from '@/assets/icons/search-icon.svg';
 import DogHero from '@/assets/illustrations/dog-hero.svg';
 import { SPOT_TYPE_LABELS } from '@/constants/spotFormOptions';
 import { usePetMapStore } from '@/store/petmap-store';
@@ -24,12 +26,12 @@ type FavoriteSpot = ReturnType<typeof usePetMapStore>['favoriteSpots'][number];
 type SourceKind = 'platform' | 'user' | 'local';
 
 const TYPE_BADGE_COLORS = {
-  park: '#2B6B2B',
-  cafe: '#5D3114',
-  hospital: '#5A2F52',
-  store: '#344A7A',
-  indoor: '#2C5E6E',
-  other: '#46526B',
+  park: '#55A462',
+  cafe: '#8C6239',
+  hospital: '#E6E6E6',
+  store: '#0071BC',
+  indoor: '#B02E2A',
+  other: '#8C6239',
 } as const;
 
 function BackArrowIcon() {
@@ -102,6 +104,7 @@ function FavoritesSpotCard({
   const address = getDisplayAddress(spot);
   const visibleTags = spot.tags.slice(0, 4);
   const typeColor = TYPE_BADGE_COLORS[spot.spotType] ?? TYPE_BADGE_COLORS.other;
+  const typeTextColor = spot.spotType === 'hospital' ? '#303030' : '#FFFFFF';
 
   return (
     <Pressable onPress={onPress} style={styles.spotCard}>
@@ -137,7 +140,7 @@ function FavoritesSpotCard({
 
       <View style={styles.spotCardContent}>
         <View style={[styles.typeBadge, { backgroundColor: typeColor }]}>
-          <Text style={styles.typeBadgeText}>{SPOT_TYPE_LABELS[spot.spotType]}</Text>
+          <Text style={[styles.typeBadgeText, { color: typeTextColor }]}>{SPOT_TYPE_LABELS[spot.spotType]}</Text>
         </View>
 
         <View style={styles.spotBottomContent}>
@@ -188,7 +191,7 @@ function FavoritesSpotCard({
           </View>
 
           <View style={styles.heatRow}>
-            <Ionicons name="flame-outline" size={13} color="#ED8422" />
+            <HeatIcon width={13} height={13} />
             <Text style={styles.heatText}>{spot.votes}</Text>
           </View>
         </View>
@@ -244,7 +247,6 @@ export default function MyFavoritesScreen() {
         <SafeAreaView edges={['top']} style={styles.safeTopRow}>
           <Pressable onPress={() => router.navigate('/(tabs)')} style={styles.backButton}>
             <BackArrowIcon />
-            <Text style={styles.backLabel}>返回</Text>
           </Pressable>
         </SafeAreaView>
 
@@ -253,7 +255,7 @@ export default function MyFavoritesScreen() {
         <Text style={[styles.heroTitle, { top: titleTop }]}>我的收藏</Text>
 
         <View style={[styles.searchBoxWrap, { top: searchTop }]}>
-          <Ionicons name="search-outline" size={20} color="#424242" />
+          <SearchIcon width={20} height={20} />
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -353,11 +355,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#ED8422',
   },
   backButton: {
-    width: 78,
+    width: 44,
+    height: 36,
     padding: 10,
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'center',
   },
   safeTopRow: {
     position: 'absolute',
@@ -368,12 +370,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     zIndex: 6,
     alignItems: 'flex-start',
-  },
-  backLabel: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '400',
-    lineHeight: 10,
   },
   heroDog: {
     position: 'absolute',
@@ -553,17 +549,16 @@ const styles = StyleSheet.create({
   },
   typeBadge: {
     alignSelf: 'flex-start',
-    minHeight: 17,
+    minHeight: 21,
     borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.26)',
   },
   typeBadgeText: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
     letterSpacing: 0.15,
   },
   spotBottomContent: {
