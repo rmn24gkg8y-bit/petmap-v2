@@ -1,127 +1,225 @@
-import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { router, Stack } from 'expo-router';
+import { useMemo, useState } from 'react';
+import {
+  FlatList,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import Svg, { Path } from 'react-native-svg';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { EmptyStateCard, PrimaryButton, SectionHeader, SpotCard, StatusBadge, TagChip } from '@/components/ui';
+import DogHero from '@/assets/illustrations/dog-hero.svg';
 import { SPOT_TYPE_LABELS } from '@/constants/spotFormOptions';
-import { theme } from '@/constants/theme';
 import { usePetMapStore } from '@/store/petmap-store';
-import type { Spot } from '@/types/spot';
+import { formatDistance, getDistanceMeters } from '@/utils/distance';
 
-type SpotGroupKey = 'pending' | 'published' | 'other';
-type StatusFilterKey = 'all' | SpotGroupKey;
+type MySpotFilter = 'all' | 'published' | 'pending' | 'unsubmitted';
+type MySpot = ReturnType<typeof usePetMapStore>['userSpots'][number];
 
-const SPOT_STATUS_COPY: Record<
-  SpotGroupKey,
-  {
-    groupTitle: string;
-    groupDescription: string;
-    badgeLabel: string;
-    badgeVariant: 'pending' | 'favorite' | 'local';
-    hint: string;
-  }
-> = {
-  other: {
-    groupTitle: '待提交',
-    groupDescription: '尚未提交审核，可继续完善后提交。',
-    badgeLabel: '待提交',
-    badgeVariant: 'local',
-    hint: '完善后可提交审核。',
-  },
-  pending: {
-    groupTitle: '审核中',
-    groupDescription: '已提交，等待审核处理。',
-    badgeLabel: '审核中',
-    badgeVariant: 'pending',
-    hint: '地点正在审核中，可先查看或继续完善信息。',
-  },
-  published: {
-    groupTitle: '已发布',
-    groupDescription: '已上线，可继续维护地点信息。',
-    badgeLabel: '已发布',
-    badgeVariant: 'favorite',
-    hint: '地点已上线，可继续维护信息。',
-  },
+type StatusMeta = {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
 };
 
-function getSpotGroupKey(spot: Spot): SpotGroupKey {
-  if (spot.submissionStatus === 'pending_review') {
-    return 'pending';
-  }
+const TYPE_BADGE_COLORS = {
+  park: '#2B6B2B',
+  cafe: '#5D3114',
+  hospital: '#5A2F52',
+  store: '#344A7A',
+  indoor: '#2C5E6E',
+  other: '#46526B',
+} as const;
 
+function BackArrowIcon() {
+  return (
+    <Svg width={8} height={16} viewBox="0 0 11 19" fill="none">
+      <Path
+        d="M9.5 17.5L1.5 9.5L9.5 1.5"
+        stroke="#FFFFFF"
+        strokeWidth={3}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function getDisplayAddress(spot: MySpot) {
+  return (
+    spot.formattedAddress?.trim() ||
+    [spot.district, spot.addressHint].map((value) => value.trim()).filter(Boolean).join(' · ') ||
+    '地址待补充'
+  );
+}
+
+function getSpotStatusMeta(spot: MySpot): StatusMeta {
   if (spot.verified) {
-    return 'published';
+    return {
+      label: '已发布',
+      icon: 'checkmark-circle-outline',
+      color: '#67A735',
+    };
   }
 
-  return 'other';
+  if (spot.submissionStatus === 'pending_review') {
+    return {
+      label: '审核中',
+      icon: 'time-outline',
+      color: '#ED8422',
+    };
+  }
+
+  return {
+    label: '未提交',
+    icon: 'document-outline',
+    color: '#2F2F2F',
+  };
 }
 
-function getSpotStatusMeta(spot: Spot) {
-  return SPOT_STATUS_COPY[getSpotGroupKey(spot)];
+function matchesSpotFilter(spot: MySpot, filter: MySpotFilter) {
+  if (filter === 'all') {
+    return true;
+  }
+
+  if (filter === 'published') {
+    return Boolean(spot.verified);
+  }
+
+  if (filter === 'pending') {
+    return spot.submissionStatus === 'pending_review';
+  }
+
+  return !spot.verified && (spot.submissionStatus === undefined || spot.submissionStatus === 'local');
 }
 
-function isStatusFilterKey(value: string): value is StatusFilterKey {
-  return value === 'all' || value === 'other' || value === 'pending' || value === 'published';
+function MySpotCard({
+  spot,
+  distanceText,
+  onPress,
+}: {
+  spot: MySpot;
+  distanceText: string;
+  onPress: () => void;
+}) {
+  const statusMeta = getSpotStatusMeta(spot);
+  const district = spot.district.trim() || '未知区域';
+  const address = getDisplayAddress(spot);
+  const visibleTags = spot.tags.slice(0, 4);
+  const typeColor = TYPE_BADGE_COLORS[spot.spotType] ?? TYPE_BADGE_COLORS.other;
+
+  return (
+    <Pressable onPress={onPress} style={styles.spotCard}>
+      <View style={styles.spotMediaLayer}>
+        {spot.photoUris?.[0] ? (
+          <Image source={{ uri: spot.photoUris[0] }} style={styles.spotImage} />
+        ) : (
+          <View style={styles.spotImagePlaceholder}>
+            <View style={styles.spotPlaceholderGlowA} />
+            <View style={styles.spotPlaceholderGlowB} />
+            <View style={styles.spotPlaceholderContent}>
+              <View style={styles.spotPlaceholderIconWrap}>
+                <Ionicons name="image-outline" size={16} color="#6A6863" />
+              </View>
+              <Text style={styles.spotPlaceholderTitle}>PetMap Spot</Text>
+              <Text style={styles.spotPlaceholderSubtitle}>暂无图片</Text>
+            </View>
+          </View>
+        )}
+      </View>
+
+      <LinearGradient
+        pointerEvents="none"
+        colors={[
+          'rgba(0,0,0,0)',
+          'rgba(0,0,0,0.12)',
+          'rgba(0,0,0,0.3)',
+          'rgba(0,0,0,0.6)',
+        ]}
+        locations={[0, 0.44, 0.72, 1]}
+        style={styles.spotGradientLayer}
+      />
+
+      <View style={styles.spotCardContent}>
+        <View style={[styles.typeBadge, { backgroundColor: typeColor }]}>
+          <Text style={styles.typeBadgeText}>{SPOT_TYPE_LABELS[spot.spotType]}</Text>
+        </View>
+
+        <View style={styles.spotBottomContent}>
+          <View>
+            <View style={styles.sourceRow}>
+              <Ionicons name={statusMeta.icon} size={11} color={statusMeta.color} />
+              <Text style={[styles.sourceText, { color: statusMeta.color }]}>{statusMeta.label}</Text>
+            </View>
+
+            <View style={styles.titleRow}>
+              <Text style={styles.spotTitle} numberOfLines={1}>
+                {spot.name}
+              </Text>
+              <Text style={styles.distanceText} numberOfLines={1}>
+                {distanceText}
+              </Text>
+            </View>
+
+            <View style={styles.addressRow}>
+              <Text style={styles.districtText} numberOfLines={1}>
+                {district}
+              </Text>
+              <Text style={styles.addressDot}>·</Text>
+              <Text style={styles.addressDetailText} numberOfLines={1}>
+                {address}
+              </Text>
+            </View>
+
+            <View style={styles.tagsRow}>
+              {visibleTags.length > 0
+                ? visibleTags.map((tag) => (
+                    <View key={`${spot.id}-${tag}`} style={styles.tagPill}>
+                      <Text style={styles.tagText} numberOfLines={1}>
+                        {tag}
+                      </Text>
+                    </View>
+                  ))
+                : null}
+            </View>
+          </View>
+
+          <View style={styles.heatRow}>
+            <Ionicons name="flame-outline" size={13} color="#ED8422" />
+            <Text style={styles.heatText}>{spot.votes}</Text>
+          </View>
+        </View>
+      </View>
+    </Pressable>
+  );
 }
 
 export default function MySpotsScreen() {
-  const params = useLocalSearchParams<{ status?: string }>();
-  const { userSpots, setSelectedSpot, submitSpotForReview, removeSpot } = usePetMapStore();
+  const insets = useSafeAreaInsets();
+  const { userSpots, setSelectedSpot, userLoc } = usePetMapStore();
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedStatusFilter, setSelectedStatusFilter] = useState<StatusFilterKey>('all');
-
-  useEffect(() => {
-    const nextStatus = Array.isArray(params.status) ? params.status[0] : params.status;
-
-    if (nextStatus && isStatusFilterKey(nextStatus)) {
-      setSelectedStatusFilter(nextStatus);
-    }
-  }, [params.status]);
+  const [selectedFilter, setSelectedFilter] = useState<MySpotFilter>('all');
 
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
-  const filteredUserSpots = useMemo(() => {
+  const filteredSpots = useMemo(() => {
     return userSpots.filter((spot) => {
-      const groupKey = getSpotGroupKey(spot);
-      const matchesStatus = selectedStatusFilter === 'all' || groupKey === selectedStatusFilter;
+      const matchesFilter = matchesSpotFilter(spot, selectedFilter);
       const matchesSearch =
         normalizedQuery.length === 0 ||
-        [
-          spot.name,
-          spot.formattedAddress ?? '',
-          spot.district,
-          spot.addressHint,
-          ...spot.tags,
-        ].some((value) => value.toLocaleLowerCase().includes(normalizedQuery));
+        [spot.name, spot.formattedAddress ?? '', spot.addressHint, spot.district, ...spot.tags]
+          .join(' ')
+          .toLocaleLowerCase()
+          .includes(normalizedQuery);
 
-      return matchesStatus && matchesSearch;
+      return matchesFilter && matchesSearch;
     });
-  }, [normalizedQuery, selectedStatusFilter, userSpots]);
-  const groupedSpots = useMemo(() => {
-    const pending = filteredUserSpots.filter((spot) => getSpotGroupKey(spot) === 'pending');
-    const published = filteredUserSpots.filter((spot) => getSpotGroupKey(spot) === 'published');
-    const others = filteredUserSpots.filter((spot) => getSpotGroupKey(spot) === 'other');
-
-    return [
-      {
-        key: 'pending' as const,
-        title: SPOT_STATUS_COPY.pending.groupTitle,
-        description: SPOT_STATUS_COPY.pending.groupDescription,
-        spots: pending,
-      },
-      {
-        key: 'published' as const,
-        title: SPOT_STATUS_COPY.published.groupTitle,
-        description: SPOT_STATUS_COPY.published.groupDescription,
-        spots: published,
-      },
-      {
-        key: 'other' as const,
-        title: SPOT_STATUS_COPY.other.groupTitle,
-        description: SPOT_STATUS_COPY.other.groupDescription,
-        spots: others,
-      },
-    ].filter((group) => group.spots.length > 0);
-  }, [filteredUserSpots]);
+  }, [normalizedQuery, selectedFilter, userSpots]);
 
   function handleSelectSpot(id: string) {
     setSelectedSpot(id);
@@ -129,227 +227,131 @@ export default function MySpotsScreen() {
       pathname: '/(tabs)',
       params: {
         returnTo: 'my-spots',
-        returnStatus: selectedStatusFilter,
       },
     });
   }
 
-  function handleEditSpot(id: string) {
-    setSelectedSpot(id);
-    router.navigate({
-      pathname: '/(tabs)',
-      params: {
-        returnTo: 'my-spots',
-        returnStatus: selectedStatusFilter,
-      },
-    });
-  }
-
-  function handleDeleteSpot(id: string) {
-    Alert.alert('确认删除地点？', '删除后将无法恢复', [
-      {
-        text: '取消',
-        style: 'cancel',
-      },
-      {
-        text: '删除',
-        style: 'destructive',
-        onPress: () => removeSpot(id),
-      },
-    ]);
-  }
-
-  async function handleSubmitForReview(id: string) {
-    const result = await submitSpotForReview(id);
-
-    if (result.success) {
-      if (result.mode === 'cloud') {
-        Alert.alert('提交成功', '该地点已提交到云端审核队列');
-      } else {
-        Alert.alert('已标记待审核', '当前未接入云端，已先在本地标记为待审核');
-      }
-      return;
-    }
-
-    Alert.alert('提交失败', result.error ?? '提交失败，请稍后重试');
-  }
+  const sheetTop = insets.top + 222;
+  const titleTop = insets.top + 80;
+  const mascotTop = insets.top + 24;
+  const searchTop = insets.top + 131;
+  const chipsTop = insets.top + 176;
 
   return (
     <View style={styles.container}>
-      <Stack.Screen options={{ title: '我的地点' }} />
+      <Stack.Screen options={{ headerShown: false }} />
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <SectionHeader
-          eyebrow="我的清单"
-          title="我的地点"
-          subtitle={`共 ${userSpots.length} 个，支持关键词和状态筛选。`}
-          style={styles.listHeader}
-        />
+      <View style={styles.heroLayer}>
+        <SafeAreaView edges={['top']} style={styles.safeTopRow}>
+          <Pressable onPress={() => router.navigate('/(tabs)')} style={styles.backButton}>
+            <BackArrowIcon />
+            <Text style={styles.backLabel}>返回</Text>
+          </Pressable>
+        </SafeAreaView>
 
-        {userSpots.length === 0 ? (
-          <View style={styles.listEmpty}>
-            <EmptyStateCard
-              title="暂无我的地点"
-              description="去地图页长按添加一个地点。"
-              action={<PrimaryButton label="去地图添加" onPress={() => router.navigate('/(tabs)')} />}
-            />
+        <DogHero width={101} height={132} style={[styles.heroDog, { top: mascotTop }]} />
+
+        <Text style={[styles.heroTitle, { top: titleTop }]}>我的地点</Text>
+
+        <View style={[styles.searchBoxWrap, { top: searchTop }]}>
+          <Ionicons name="search-outline" size={20} color="#424242" />
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="搜索"
+            placeholderTextColor="#6A6A6A"
+            style={styles.searchInput}
+          />
+        </View>
+
+        <View style={[styles.heroChipRow, { top: chipsTop }]}>
+          <Pressable
+            onPress={() => setSelectedFilter('all')}
+            style={[styles.heroChip, selectedFilter === 'all' ? styles.heroChipActive : styles.heroChipDefault]}>
+            <Text
+              style={[
+                styles.heroChipText,
+                selectedFilter === 'all' ? styles.heroChipTextActive : styles.heroChipTextDefault,
+              ]}>
+              全部
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => setSelectedFilter('published')}
+            style={[
+              styles.heroChip,
+              selectedFilter === 'published' ? styles.heroChipActive : styles.heroChipDefault,
+            ]}>
+            <Text
+              style={[
+                styles.heroChipText,
+                selectedFilter === 'published' ? styles.heroChipTextActive : styles.heroChipTextDefault,
+              ]}>
+              已发布
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => setSelectedFilter('pending')}
+            style={[
+              styles.heroChip,
+              selectedFilter === 'pending' ? styles.heroChipActive : styles.heroChipDefault,
+            ]}>
+            <Text
+              style={[
+                styles.heroChipText,
+                selectedFilter === 'pending' ? styles.heroChipTextActive : styles.heroChipTextDefault,
+              ]}>
+              审核中
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => setSelectedFilter('unsubmitted')}
+            style={[
+              styles.heroChip,
+              selectedFilter === 'unsubmitted' ? styles.heroChipActive : styles.heroChipDefault,
+            ]}>
+            <Text
+              style={[
+                styles.heroChipText,
+                selectedFilter === 'unsubmitted' ? styles.heroChipTextActive : styles.heroChipTextDefault,
+              ]}>
+              未提交
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+
+      <View style={[styles.contentSheet, { top: sheetTop, paddingBottom: insets.bottom }]}> 
+        {filteredSpots.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyText}>暂时还没有添加的地点呢</Text>
           </View>
         ) : (
-          <>
-            <View style={styles.toolbar}>
-              <View style={styles.searchRow}>
-                <TextInput
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  placeholder="搜索我的地点、地址或标签"
-                  style={styles.searchInput}
-                />
-              </View>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.filterContent}>
-                <TagChip
-                  label="全部"
-                  active={selectedStatusFilter === 'all'}
-                  onPress={() => setSelectedStatusFilter('all')}
-                />
-                <TagChip
-                  label="待提交"
-                  active={selectedStatusFilter === 'other'}
-                  onPress={() => setSelectedStatusFilter('other')}
-                />
-                <TagChip
-                  label="审核中"
-                  active={selectedStatusFilter === 'pending'}
-                  onPress={() => setSelectedStatusFilter('pending')}
-                />
-                <TagChip
-                  label="已发布"
-                  active={selectedStatusFilter === 'published'}
-                  onPress={() => setSelectedStatusFilter('published')}
-                />
-              </ScrollView>
-            </View>
+          <FlatList
+            data={filteredSpots}
+            keyExtractor={(item) => item.id}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContent}
+            ItemSeparatorComponent={() => <View style={styles.listSeparator} />}
+            renderItem={({ item }) => {
+              const distanceText = userLoc
+                ? formatDistance(getDistanceMeters(userLoc, { lat: item.lat, lng: item.lng })).replace(/\s+/g, '')
+                : '距离未知';
 
-            {groupedSpots.length === 0 ? (
-              <View style={styles.listEmpty}>
-                <EmptyStateCard
-                  title="没有匹配的地点"
-                  description="试试调整关键词或状态筛选。"
-                  action={
-                    <PrimaryButton
-                      label="重置筛选"
-                      onPress={() => {
-                        setSearchQuery('');
-                        setSelectedStatusFilter('all');
-                      }}
-                    />
-                  }
+              return (
+                <MySpotCard
+                  spot={item}
+                  distanceText={distanceText}
+                  onPress={() => handleSelectSpot(item.id)}
                 />
-              </View>
-            ) : (
-              groupedSpots.map((group) => (
-                <View key={group.key} style={styles.groupSection}>
-                  <View style={styles.groupHeader}>
-                    <View style={styles.groupHeaderContent}>
-                      <Text style={styles.groupTitle}>{group.title}</Text>
-                      <Text style={styles.groupDescription}>{group.description}</Text>
-                    </View>
-                    <Text style={styles.groupCount}>{group.spots.length} 个</Text>
-                  </View>
-                  {group.spots.map((item) => {
-                    const statusMeta = getSpotStatusMeta(item);
-                    const groupKey = getSpotGroupKey(item);
-
-                    return (
-                      <SpotCard
-                        key={item.id}
-                        title={item.name}
-                        address={
-                          item.formattedAddress?.trim() ||
-                          [item.district, item.addressHint]
-                            .map((value) => value.trim())
-                            .filter(Boolean)
-                            .join(' · ') ||
-                          '地址待补充'
-                        }
-                        photoUri={item.photoUris?.[0]}
-                        badges={
-                          <>
-                            <StatusBadge label={statusMeta.badgeLabel} variant={statusMeta.badgeVariant} />
-                            <StatusBadge label={SPOT_TYPE_LABELS[item.spotType]} variant="system" />
-                          </>
-                        }
-                        tags={item.tags.slice(0, 2)}
-                        onPressTop={() => handleSelectSpot(item.id)}
-                        footer={
-                          <View style={styles.cardFooter}>
-                            <Text style={styles.statusHintText}>{statusMeta.hint}</Text>
-                            <View style={styles.actionsRow}>
-                              {groupKey === 'other' ? (
-                                <>
-                                  <PrimaryButton
-                                    label="提交审核"
-                                    onPress={() => handleSubmitForReview(item.id)}
-                                    style={styles.actionButton}
-                                  />
-                                  <PrimaryButton
-                                    label="去地图编辑"
-                                    variant="secondary"
-                                    onPress={() => handleEditSpot(item.id)}
-                                    style={styles.actionButton}
-                                  />
-                                </>
-                              ) : null}
-                              {groupKey === 'pending' ? (
-                                <>
-                                  <PrimaryButton
-                                    label="查看地点"
-                                    onPress={() => handleSelectSpot(item.id)}
-                                    style={styles.actionButton}
-                                  />
-                                  <PrimaryButton
-                                    label="去地图编辑"
-                                    variant="secondary"
-                                    onPress={() => handleEditSpot(item.id)}
-                                    style={styles.actionButton}
-                                  />
-                                </>
-                              ) : null}
-                              {groupKey === 'published' ? (
-                                <>
-                                  <PrimaryButton
-                                    label="查看地点"
-                                    onPress={() => handleSelectSpot(item.id)}
-                                    style={styles.actionButton}
-                                  />
-                                  <PrimaryButton
-                                    label="去地图编辑"
-                                    variant="secondary"
-                                    onPress={() => handleEditSpot(item.id)}
-                                    style={styles.actionButton}
-                                  />
-                                  <PrimaryButton
-                                    label="删除地点"
-                                    variant="danger"
-                                    onPress={() => handleDeleteSpot(item.id)}
-                                    style={styles.actionButton}
-                                  />
-                                </>
-                              ) : null}
-                            </View>
-                          </View>
-                        }
-                      />
-                    );
-                  })}
-                </View>
-              ))
-            )}
-          </>
+              );
+            }}
+          />
         )}
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -357,86 +359,313 @@ export default function MySpotsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.pageBackground,
+    backgroundColor: '#67A735',
   },
-  content: {
-    padding: theme.spacing.lg,
-    paddingBottom: theme.spacing.xl + theme.spacing.sm,
-    flexGrow: 1,
+  heroLayer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#67A735',
   },
-  listHeader: {
-    marginBottom: theme.spacing.xs + 2,
-  },
-  listEmpty: {
-    marginTop: theme.spacing.sm,
-  },
-  toolbar: {
-    gap: theme.spacing.xs + 2,
-    marginBottom: theme.spacing.xs + 2,
-  },
-  searchRow: {
+  backButton: {
+    width: 78,
+    padding: 10,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
+  },
+  safeTopRow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingTop: 2,
+    paddingHorizontal: 16,
+    zIndex: 6,
+    alignItems: 'flex-start',
+  },
+  backLabel: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 10,
+  },
+  heroDog: {
+    position: 'absolute',
+    right: 170,
+    zIndex: 1,
+  },
+  heroTitle: {
+    position: 'absolute',
+    right: 16,
+    color: '#FFFFFF',
+    fontSize: 32,
+    fontWeight: '700',
+    lineHeight: 40,
+    zIndex: 2,
+  },
+  searchBoxWrap: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: '#FFFEFF',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    zIndex: 4,
   },
   searchInput: {
     flex: 1,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.cardBackground,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: theme.colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#424242',
+    padding: 0,
   },
-  filterContent: {
-    gap: theme.spacing.xs,
-    paddingBottom: 2,
-  },
-  groupSection: {
-    marginBottom: theme.spacing.sm,
-  },
-  groupHeader: {
+  heroChipRow: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: theme.spacing.xs,
-    gap: theme.spacing.xs,
+    alignItems: 'center',
+    gap: 10,
+    zIndex: 4,
   },
-  groupHeaderContent: {
+  heroChip: {
+    borderRadius: 50,
+    paddingVertical: 5,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroChipActive: {
+    borderWidth: 2,
+    borderColor: '#FFF',
+    backgroundColor: '#67A735',
+  },
+  heroChipDefault: {
+    backgroundColor: '#FFFEFF',
+  },
+  heroChipText: {
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 22,
+  },
+  heroChipTextActive: {
+    color: '#F4F4F4',
+  },
+  heroChipTextDefault: {
+    color: '#67A735',
+  },
+  contentSheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#FFFEFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  listContent: {
+    paddingTop: 19,
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+  },
+  listSeparator: {
+    height: 17,
+  },
+  emptyWrap: {
     flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
   },
-  groupTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: theme.colors.textPrimary,
+  emptyText: {
+    color: '#404040',
+    fontSize: 20,
+    fontWeight: '700',
+    lineHeight: 28,
+    textAlign: 'center',
   },
-  groupDescription: {
+  spotCard: {
+    width: '100%',
+    height: 168,
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: '#D7D2CB',
+  },
+  spotMediaLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+  },
+  spotImage: {
+    width: '100%',
+    height: '100%',
+  },
+  spotImagePlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#D8D2C8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  spotPlaceholderGlowA: {
+    position: 'absolute',
+    top: -24,
+    right: -30,
+    width: 130,
+    height: 130,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  spotPlaceholderGlowB: {
+    position: 'absolute',
+    bottom: -42,
+    left: -28,
+    width: 116,
+    height: 116,
+    borderRadius: 999,
+    backgroundColor: 'rgba(118,112,102,0.2)',
+  },
+  spotPlaceholderContent: {
+    alignItems: 'center',
+  },
+  spotPlaceholderIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  spotPlaceholderTitle: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#55524D',
+  },
+  spotPlaceholderSubtitle: {
     marginTop: 2,
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#726D66',
+  },
+  spotGradientLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2,
+  },
+  spotCardContent: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 3,
+    paddingHorizontal: 13,
+    paddingTop: 10,
+    paddingBottom: 9,
+    justifyContent: 'space-between',
+  },
+  typeBadge: {
+    alignSelf: 'flex-start',
+    minHeight: 17,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.26)',
+  },
+  typeBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.15,
+  },
+  spotBottomContent: {
+    position: 'relative',
+    paddingRight: 52,
+  },
+  sourceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 1,
+  },
+  sourceText: {
+    fontSize: 10,
+    lineHeight: 10,
+    fontWeight: '900',
+  },
+  titleRow: {
+    marginTop: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+  },
+  spotTitle: {
+    flexShrink: 1,
+    fontSize: 21,
+    lineHeight: 26,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  distanceText: {
+    marginLeft: 9,
     fontSize: 12,
-    lineHeight: 17,
-    color: theme.colors.textSecondary,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.92)',
   },
-  groupCount: {
+  addressRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  districtText: {
+    flexShrink: 0,
     fontSize: 12,
-    color: theme.colors.textSecondary,
-    fontWeight: '600',
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
-  cardFooter: {
-    marginTop: theme.spacing.sm + 2,
-    gap: theme.spacing.sm,
-  },
-  statusHintText: {
+  addressDot: {
+    marginHorizontal: 5,
     fontSize: 12,
-    lineHeight: 17,
-    color: theme.colors.textSecondary,
+    color: 'rgba(255,255,255,0.75)',
   },
-  actionsRow: {
+  addressDetailText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '400',
+    color: 'rgba(255,255,255,0.88)',
+  },
+  tagsRow: {
+    marginTop: 6,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: theme.spacing.xs,
+    gap: 5,
   },
-  actionButton: {
-    paddingVertical: 10,
+  tagPill: {
+    height: 16,
+    minWidth: 31,
+    borderRadius: 999,
+    backgroundColor: 'rgba(237,132,34,0.88)',
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tagText: {
+    fontSize: 9,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.96)',
+  },
+  heatRow: {
+    position: 'absolute',
+    right: 12,
+    bottom: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  heatText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: 'rgba(244,244,244,0.95)',
   },
 });
