@@ -20,8 +20,17 @@ import {
 } from 'react-native';
 import MapView, { Marker, type Region } from 'react-native-maps';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import FavouriteDefaultIcon from '@/assets/icons/favourite-default.svg';
+import FavouritePressedIcon from '@/assets/icons/favourite-pressed.svg';
+import BoneBurstIcon from '@/assets/icons/bone-burst.svg';
+import HeatIcon from '@/assets/icons/heat-icon.svg';
+import NavigationDefaultIcon from '@/assets/icons/navigation-default.svg';
+import ShareDefaultIcon from '@/assets/icons/share-default.svg';
+import SheetHandleIcon from '@/assets/icons/sheet-handle.svg';
+import StarBurstIcon from '@/assets/icons/star-burst.svg';
 import CoffeeDefaultMarker from '@/assets/markers/coffee-default.svg';
 import CoffeeSelectedMarker from '@/assets/markers/coffee-selected.svg';
 import MallDefaultMarker from '@/assets/markers/mall-default.svg';
@@ -36,6 +45,7 @@ import VetDefaultMarker from '@/assets/markers/vet-default.svg';
 import VetSelectedMarker from '@/assets/markers/vet-selected.svg';
 import { MapQuickActions } from '@/components/map/MapQuickActions';
 import { SpotFormModal } from '@/components/map/SpotFormModal';
+import { ACTIVITY_COLLECTIONS, type ActivityCollection } from '@/constants/activityCollections';
 import { theme } from '@/constants/theme';
 import { usePetMapStore } from '@/store/petmap-store';
 import type { Spot, SpotType } from '@/types/spot';
@@ -71,6 +81,157 @@ const COLLAPSED_TYPE_LABELS: Record<SpotType, string> = {
   indoor: '室内友好',
   other: '其他',
 };
+
+const TYPE_BADGE_COLORS: Record<SpotType, { background: string; text: string }> = {
+  cafe: { background: '#8C6239', text: '#FFFFFF' },
+  indoor: { background: '#B02E2A', text: '#FFFFFF' },
+  store: { background: '#0071BC', text: '#FFFFFF' },
+  hospital: { background: '#E6E6E6', text: '#303030' },
+  park: { background: '#55A462', text: '#FFFFFF' },
+  other: { background: '#8C6239', text: '#FFFFFF' },
+};
+
+function BackArrowIcon({ color = '#3D3D3D' }: { color?: string }) {
+  return (
+    <Svg width={8} height={16} viewBox="0 0 11 19" fill="none">
+      <Path
+        d="M9.5 17.5L1.5 9.5L9.5 1.5"
+        stroke={color}
+        strokeWidth={3}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function FavoriteSuccessBurst({ progress }: { progress: Animated.Value }) {
+  const burstOpacity = progress.interpolate({
+    inputRange: [0, 0.1, 0.85, 1],
+    outputRange: [0, 1, 0.35, 0],
+  });
+  const burstScale = progress.interpolate({
+    inputRange: [0, 0.35, 1],
+    outputRange: [0.8, 1.08, 0.9],
+  });
+  const bonePrimaryTranslateX = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 11],
+  });
+  const bonePrimaryTranslateY = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -10],
+  });
+  const boneTopLeftTranslateX = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -8],
+  });
+  const boneTopLeftTranslateY = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -11],
+  });
+  const boneBottomTranslateX = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 9],
+  });
+  const boneBottomTranslateY = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 9],
+  });
+  const starLeftTranslateX = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -10],
+  });
+  const starLeftTranslateY = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -12],
+  });
+  const starBottomTranslateX = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 8],
+  });
+  const starBottomTranslateY = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 8],
+  });
+
+  return (
+    <View pointerEvents="none" style={styles.favoriteBurstLayer}>
+      <Animated.View
+        style={[
+          styles.favoriteBurstPiece,
+          styles.favoriteBurstBonePrimary,
+          {
+            opacity: burstOpacity,
+            transform: [
+              { translateX: bonePrimaryTranslateX },
+              { translateY: bonePrimaryTranslateY },
+              { rotate: '22deg' },
+              { scale: burstScale },
+            ],
+          },
+        ]}>
+        <BoneBurstIcon width={8} height={16} />
+      </Animated.View>
+      <Animated.View
+        style={[
+          styles.favoriteBurstPiece,
+          styles.favoriteBurstBoneTopLeft,
+          {
+            opacity: burstOpacity,
+            transform: [
+              { translateX: boneTopLeftTranslateX },
+              { translateY: boneTopLeftTranslateY },
+              { rotate: '-26deg' },
+              { scale: burstScale },
+              { scale: 0.85 },
+            ],
+          },
+        ]}>
+        <BoneBurstIcon width={7} height={13} />
+      </Animated.View>
+      <Animated.View
+        style={[
+          styles.favoriteBurstPiece,
+          styles.favoriteBurstBoneBottom,
+          {
+            opacity: burstOpacity,
+            transform: [
+              { translateX: boneBottomTranslateX },
+              { translateY: boneBottomTranslateY },
+              { rotate: '58deg' },
+              { scale: burstScale },
+              { scale: 0.72 },
+            ],
+          },
+        ]}>
+        <BoneBurstIcon width={6} height={11} />
+      </Animated.View>
+      <Animated.View
+        style={[
+          styles.favoriteBurstPiece,
+          styles.favoriteBurstStarLeft,
+          {
+            opacity: burstOpacity,
+            transform: [{ translateX: starLeftTranslateX }, { translateY: starLeftTranslateY }, { scale: burstScale }],
+          },
+        ]}>
+        <StarBurstIcon width={9} height={9} />
+      </Animated.View>
+      <Animated.View
+        style={[
+          styles.favoriteBurstPiece,
+          styles.favoriteBurstStarBottom,
+          {
+            opacity: burstOpacity,
+            transform: [{ translateX: starBottomTranslateX }, { translateY: starBottomTranslateY }, { scale: burstScale }],
+          },
+        ]}>
+        <StarBurstIcon width={7} height={7} />
+      </Animated.View>
+    </View>
+  );
+}
 
 function formatCollapsedDistance(distanceMeters: number) {
   if (distanceMeters < 1000) {
@@ -278,6 +439,8 @@ export default function TabOneScreen() {
   const dragStageRef = useRef<SheetStage>('collapsed');
   const sheetOffsetRef = useRef(collapsedOffset);
   const sheetVisibleHeightRef = useRef(0);
+  const favoriteButtonScale = useRef(new Animated.Value(1)).current;
+  const favoriteBurstProgress = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (returnToParam !== 'my-spots' && returnToParam !== 'my-favorites') {
@@ -965,6 +1128,80 @@ export default function TabOneScreen() {
     }
   }
 
+  function handleOpenSpotFeedback() {
+    if (!selectedSpot) {
+      return;
+    }
+
+    router.push({
+      pathname: '/feedback',
+      params: {
+        type: 'spot',
+        contextType: 'spot',
+        spotId: selectedSpot.id,
+        spotName: selectedSpot.name,
+        spotAddress: selectedSpotDisplayAddress,
+        spotIdentityLabel: sourceInfoDisplay?.label ?? collapsedTypeLabel,
+      },
+    });
+  }
+
+  function handleOpenWeeklyActivity(activity: ActivityCollection) {
+    router.push(`/activity/${activity.key}`);
+  }
+
+  function handleFavoritePressIn() {
+    Animated.timing(favoriteButtonScale, {
+      toValue: 0.95,
+      duration: 90,
+      useNativeDriver: true,
+    }).start();
+  }
+
+  function handleFavoritePressOut() {
+    Animated.timing(favoriteButtonScale, {
+      toValue: 1,
+      duration: 120,
+      useNativeDriver: true,
+    }).start();
+  }
+
+  function handleToggleFavoriteWithFeedback() {
+    if (!selectedSpot) {
+      return;
+    }
+
+    const wasFavorite = isFavorite(selectedSpot.id);
+    toggleFavorite(selectedSpot.id);
+    favoriteButtonScale.stopAnimation(() => {
+      Animated.sequence([
+        Animated.timing(favoriteButtonScale, {
+          toValue: 1.08,
+          duration: 90,
+          useNativeDriver: true,
+        }),
+        Animated.timing(favoriteButtonScale, {
+          toValue: 1,
+          duration: 130,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+
+    if (!wasFavorite) {
+      favoriteBurstProgress.stopAnimation(() => {
+        favoriteBurstProgress.setValue(0);
+        Animated.timing(favoriteBurstProgress, {
+          toValue: 1,
+          duration: 360,
+          useNativeDriver: true,
+        }).start(() => {
+          favoriteBurstProgress.setValue(0);
+        });
+      });
+    }
+  }
+
   const selectedSpotPhotoUris = selectedSpot?.photoUris ?? [];
   const shouldUseReadonlyDistrict =
     Boolean(pendingFormattedAddress.trim()) &&
@@ -979,6 +1216,7 @@ export default function TabOneScreen() {
     selectedSpot?.formattedAddress?.trim() || selectedSpotFallbackAddress || '地址待补充';
   const collapsedPreviewUri = selectedSpotPhotoUris[0];
   const collapsedTypeLabel = selectedSpot ? COLLAPSED_TYPE_LABELS[selectedSpot.spotType] : '';
+  const selectedTypeBadgePalette = selectedSpot ? TYPE_BADGE_COLORS[selectedSpot.spotType] : TYPE_BADGE_COLORS.other;
   const sourceInfoDisplay = resolveSourceInfoDisplay(selectedSpot);
   const collapsedDistanceText =
     selectedSpot && userLoc
@@ -1006,6 +1244,13 @@ export default function TabOneScreen() {
   const halfBusinessHours = selectedSpot?.businessHours?.trim() || '待补充';
   const halfPhotoUris = selectedSpotPhotoUris.slice(0, 6);
   const halfAddressDetail = collapsedAddressDetail;
+  const linkedWeeklyActivity = useMemo(() => {
+    if (!selectedSpot) {
+      return null;
+    }
+
+    return ACTIVITY_COLLECTIONS.find((activity) => activity.spotIds.includes(selectedSpot.id)) ?? null;
+  }, [selectedSpot]);
   const fullHeroPhoto = halfPhotoUris[0];
   const fullDistanceText =
     selectedSpot && userLoc
@@ -1086,11 +1331,22 @@ export default function TabOneScreen() {
     }
 
     if (nextSelectedSpotId) {
-      Animated.timing(getMarkerScaleValue(nextSelectedSpotId), {
-        toValue: 1.08,
-        duration: 130,
-        useNativeDriver: true,
-      }).start();
+      const selectedMarkerScale = getMarkerScaleValue(nextSelectedSpotId);
+      selectedMarkerScale.stopAnimation();
+      selectedMarkerScale.setValue(1);
+      Animated.sequence([
+        Animated.timing(selectedMarkerScale, {
+          toValue: 1.16,
+          duration: 95,
+          useNativeDriver: true,
+        }),
+        Animated.spring(selectedMarkerScale, {
+          toValue: 1.08,
+          useNativeDriver: true,
+          bounciness: 4,
+          speed: 18,
+        }),
+      ]).start();
     }
 
     previousSelectedSpotIdRef.current = nextSelectedSpotId;
@@ -1196,9 +1452,7 @@ export default function TabOneScreen() {
             },
           ]}>
           <View style={styles.sheetHandleArea} {...sheetPanResponder.panHandlers}>
-            <View style={styles.sheetHandle}>
-              <View style={styles.sheetHandleInner} />
-            </View>
+            <SheetHandleIcon width={33} height={14} />
           </View>
 
           {sheetStage === 'collapsed' ? (
@@ -1212,8 +1466,8 @@ export default function TabOneScreen() {
                 pressed ? styles.collapsedSummaryBlockPressed : null,
               ]}>
               <View style={styles.collapsedTopMetaRow}>
-                <View style={styles.collapsedTypeBadge}>
-                  <Text style={styles.collapsedTypeBadgeText} numberOfLines={1}>
+                <View style={[styles.collapsedTypeBadge, { backgroundColor: selectedTypeBadgePalette.background }]}>
+                  <Text style={[styles.collapsedTypeBadgeText, { color: selectedTypeBadgePalette.text }]} numberOfLines={1}>
                     {collapsedTypeLabel}
                   </Text>
                 </View>
@@ -1285,8 +1539,8 @@ export default function TabOneScreen() {
                 showsVerticalScrollIndicator={false}>
                 <View style={styles.halfSummaryBlock}>
                 <View style={styles.halfTopMetaRow}>
-                  <View style={styles.collapsedTypeBadge}>
-                    <Text style={styles.collapsedTypeBadgeText} numberOfLines={1}>
+                  <View style={[styles.collapsedTypeBadge, { backgroundColor: selectedTypeBadgePalette.background }]}>
+                    <Text style={[styles.collapsedTypeBadgeText, { color: selectedTypeBadgePalette.text }]} numberOfLines={1}>
                       {collapsedTypeLabel}
                     </Text>
                   </View>
@@ -1336,18 +1590,24 @@ export default function TabOneScreen() {
 
                   <View style={styles.halfActionCluster}>
                     <Pressable onPress={handleOpenNavigation} style={styles.halfActionButton}>
-                      <Ionicons name="navigate-outline" size={15} color="#FFFFFF" />
+                      <NavigationDefaultIcon width={25} height={25} />
                     </Pressable>
                     <Pressable onPress={handleShareSpotInfo} style={styles.halfActionButton}>
-                      <Ionicons name="share-social-outline" size={15} color="#FFFFFF" />
+                      <ShareDefaultIcon width={25} height={25} />
                     </Pressable>
                     <Pressable
-                      onPress={() => selectedSpot && toggleFavorite(selectedSpot.id)}
-                      style={[
-                        styles.halfActionButton,
-                        isSelectedSpotFavorite ? styles.halfActionButtonActive : null,
-                      ]}>
-                      <Ionicons name={isSelectedSpotFavorite ? 'heart' : 'heart-outline'} size={15} color="#FFFFFF" />
+                      onPress={handleToggleFavoriteWithFeedback}
+                      onPressIn={handleFavoritePressIn}
+                      onPressOut={handleFavoritePressOut}
+                      style={styles.halfActionButton}>
+                      <FavoriteSuccessBurst progress={favoriteBurstProgress} />
+                      <Animated.View style={{ transform: [{ scale: favoriteButtonScale }] }}>
+                        {isSelectedSpotFavorite ? (
+                          <FavouritePressedIcon width={25} height={25} />
+                        ) : (
+                          <FavouriteDefaultIcon width={25} height={25} />
+                        )}
+                      </Animated.View>
                     </Pressable>
                   </View>
                 </View>
@@ -1364,7 +1624,7 @@ export default function TabOneScreen() {
                   </View>
 
                   <View style={styles.halfHeatInfo}>
-                    <Ionicons name="flame" size={14} color="#ED8422" />
+                    <HeatIcon width={13} height={13} />
                     <Text style={styles.halfHeatText}>{selectedSpot.votes}</Text>
                   </View>
                 </View>
@@ -1434,25 +1694,31 @@ export default function TabOneScreen() {
                   <View style={styles.halfDivider} />
                 </View>
 
-                <View style={styles.halfWeeklyCard}>
-                  {halfPhotoUris[0] ? (
-                    <Image source={{ uri: halfPhotoUris[0] }} style={styles.halfWeeklyCardImage} />
-                  ) : (
-                    <View style={[styles.halfWeeklyCardImage, styles.halfWeeklyCardImagePlaceholder]} />
-                  )}
-                  <View style={styles.halfWeeklyCardOverlay}>
-                    <View style={styles.halfWeeklyCardTextWrap}>
-                      <Text style={styles.halfWeeklyCardTitle}>本周宠物友好精选</Text>
-                      <Text style={styles.halfWeeklyCardSubtitle}>本周平台精选十大宠物友好出门地点</Text>
+                {linkedWeeklyActivity ? (
+                  <Pressable
+                    onPress={() => handleOpenWeeklyActivity(linkedWeeklyActivity)}
+                    style={({ pressed }) => [styles.halfWeeklyCard, pressed ? styles.halfWeeklyCardPressed : null]}>
+                    {linkedWeeklyActivity.imageUri ? (
+                      <Image source={{ uri: linkedWeeklyActivity.imageUri }} style={styles.halfWeeklyCardImage} />
+                    ) : halfPhotoUris[0] ? (
+                      <Image source={{ uri: halfPhotoUris[0] }} style={styles.halfWeeklyCardImage} />
+                    ) : (
+                      <View style={[styles.halfWeeklyCardImage, styles.halfWeeklyCardImagePlaceholder]} />
+                    )}
+                    <View style={styles.halfWeeklyCardOverlay}>
+                      <View style={styles.halfWeeklyCardTextWrap}>
+                        <Text style={styles.halfWeeklyCardTitle}>{linkedWeeklyActivity.title}</Text>
+                        <Text style={styles.halfWeeklyCardSubtitle}>{linkedWeeklyActivity.summary}</Text>
+                      </View>
+                      <View style={styles.halfWeeklyCardButton}>
+                        <Text style={styles.halfWeeklyCardButtonText}>{linkedWeeklyActivity.ctaLabel}</Text>
+                      </View>
                     </View>
-                    <View style={styles.halfWeeklyCardButton}>
-                      <Text style={styles.halfWeeklyCardButtonText}>点击查看</Text>
-                    </View>
-                  </View>
-                </View>
+                  </Pressable>
+                ) : null}
 
                 <View style={styles.halfFeedbackWrap}>
-                  <Pressable style={styles.halfFeedbackButton}>
+                  <Pressable onPress={handleOpenSpotFeedback} style={styles.halfFeedbackButton}>
                     <Text style={styles.halfFeedbackButtonText}>反馈地点信息</Text>
                   </Pressable>
                   <Text style={styles.halfFeedbackText}>
@@ -1487,15 +1753,14 @@ export default function TabOneScreen() {
                       animateSheetToStage('half');
                     }}
                     style={styles.fullBackButton}>
-                    <Ionicons name="chevron-back" size={16} color="#3D3D3D" />
-                    <Text style={styles.fullBackButtonText}>返回</Text>
+                    <BackArrowIcon />
                   </Pressable>
                 </View>
                 <View style={styles.fullPanelContent}>
                   <View style={styles.fullPanelSummaryBlock}>
                     <View style={styles.halfTopMetaRow}>
-                      <View style={styles.collapsedTypeBadge}>
-                        <Text style={styles.collapsedTypeBadgeText} numberOfLines={1}>
+                      <View style={[styles.collapsedTypeBadge, { backgroundColor: selectedTypeBadgePalette.background }]}>
+                        <Text style={[styles.collapsedTypeBadgeText, { color: selectedTypeBadgePalette.text }]} numberOfLines={1}>
                           {collapsedTypeLabel}
                         </Text>
                       </View>
@@ -1549,26 +1814,28 @@ export default function TabOneScreen() {
                       <View style={styles.fullPanelInfoRight}>
                         <View style={styles.fullPanelActionButtons}>
                           <Pressable onPress={handleOpenNavigation} style={styles.halfActionButton}>
-                            <Ionicons name="navigate-outline" size={15} color="#FFFFFF" />
+                            <NavigationDefaultIcon width={25} height={25} />
                           </Pressable>
                           <Pressable onPress={handleShareSpotInfo} style={styles.halfActionButton}>
-                            <Ionicons name="share-social-outline" size={15} color="#FFFFFF" />
+                            <ShareDefaultIcon width={25} height={25} />
                           </Pressable>
                           <Pressable
-                            onPress={() => selectedSpot && toggleFavorite(selectedSpot.id)}
-                            style={[
-                              styles.halfActionButton,
-                              isSelectedSpotFavorite ? styles.halfActionButtonActive : null,
-                            ]}>
-                            <Ionicons
-                              name={isSelectedSpotFavorite ? 'heart' : 'heart-outline'}
-                              size={15}
-                              color="#FFFFFF"
-                            />
+                            onPress={handleToggleFavoriteWithFeedback}
+                            onPressIn={handleFavoritePressIn}
+                            onPressOut={handleFavoritePressOut}
+                            style={styles.halfActionButton}>
+                            <FavoriteSuccessBurst progress={favoriteBurstProgress} />
+                            <Animated.View style={{ transform: [{ scale: favoriteButtonScale }] }}>
+                              {isSelectedSpotFavorite ? (
+                                <FavouritePressedIcon width={25} height={25} />
+                              ) : (
+                                <FavouriteDefaultIcon width={25} height={25} />
+                              )}
+                            </Animated.View>
                           </Pressable>
                         </View>
                         <View style={styles.fullPanelHeatRow}>
-                          <Ionicons name="flame" size={14} color="#ED8422" />
+                          <HeatIcon width={13} height={13} />
                           <Text style={styles.halfHeatText}>{selectedSpot.votes}</Text>
                         </View>
                       </View>
@@ -1581,25 +1848,31 @@ export default function TabOneScreen() {
                   </View>
                   <View style={styles.fullPanelDivider} />
 
-                  <View style={styles.halfWeeklyCard}>
-                    {halfPhotoUris[0] ? (
-                      <Image source={{ uri: halfPhotoUris[0] }} style={styles.halfWeeklyCardImage} />
-                    ) : (
-                      <View style={[styles.halfWeeklyCardImage, styles.halfWeeklyCardImagePlaceholder]} />
-                    )}
-                    <View style={styles.halfWeeklyCardOverlay}>
-                      <View style={styles.halfWeeklyCardTextWrap}>
-                        <Text style={styles.halfWeeklyCardTitle}>本周宠物友好精选</Text>
-                        <Text style={styles.halfWeeklyCardSubtitle}>本周平台精选十大宠物友好出门地点</Text>
+                  {linkedWeeklyActivity ? (
+                    <Pressable
+                      onPress={() => handleOpenWeeklyActivity(linkedWeeklyActivity)}
+                      style={({ pressed }) => [styles.halfWeeklyCard, pressed ? styles.halfWeeklyCardPressed : null]}>
+                      {linkedWeeklyActivity.imageUri ? (
+                        <Image source={{ uri: linkedWeeklyActivity.imageUri }} style={styles.halfWeeklyCardImage} />
+                      ) : halfPhotoUris[0] ? (
+                        <Image source={{ uri: halfPhotoUris[0] }} style={styles.halfWeeklyCardImage} />
+                      ) : (
+                        <View style={[styles.halfWeeklyCardImage, styles.halfWeeklyCardImagePlaceholder]} />
+                      )}
+                      <View style={styles.halfWeeklyCardOverlay}>
+                        <View style={styles.halfWeeklyCardTextWrap}>
+                          <Text style={styles.halfWeeklyCardTitle}>{linkedWeeklyActivity.title}</Text>
+                          <Text style={styles.halfWeeklyCardSubtitle}>{linkedWeeklyActivity.summary}</Text>
+                        </View>
+                        <View style={styles.halfWeeklyCardButton}>
+                          <Text style={styles.halfWeeklyCardButtonText}>{linkedWeeklyActivity.ctaLabel}</Text>
+                        </View>
                       </View>
-                      <View style={styles.halfWeeklyCardButton}>
-                        <Text style={styles.halfWeeklyCardButtonText}>点击查看</Text>
-                      </View>
-                    </View>
-                  </View>
+                    </Pressable>
+                  ) : null}
 
                   <View style={styles.halfFeedbackWrap}>
-                    <Pressable style={styles.halfFeedbackButton}>
+                    <Pressable onPress={handleOpenSpotFeedback} style={styles.halfFeedbackButton}>
                       <Text style={styles.halfFeedbackButtonText}>反馈地点信息</Text>
                     </Pressable>
                     <Text style={styles.halfFeedbackText}>
@@ -1878,20 +2151,6 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     paddingBottom: 2,
   },
-  sheetHandle: {
-    width: 33,
-    height: 14,
-    borderRadius: 999,
-    backgroundColor: '#F5E8DE',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sheetHandleInner: {
-    width: 19,
-    height: 4,
-    borderRadius: 999,
-    backgroundColor: '#D9B79E',
-  },
   sheetScroll: {
     flex: 1,
   },
@@ -1924,24 +2183,25 @@ const styles = StyleSheet.create({
   },
   collapsedTopMetaRow: {
     width: 343,
-    height: 20,
+    height: 26,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   collapsedTypeBadge: {
-    height: 20,
+    minHeight: 25,
     borderRadius: 20,
-    backgroundColor: '#633817',
-    paddingVertical: 5,
-    paddingHorizontal: 10,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
   },
   collapsedTypeBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 8,
-    fontWeight: '900',
-    lineHeight: 10,
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 16,
   },
   collapsedSourceInfo: {
     flexDirection: 'row',
@@ -2045,19 +2305,19 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   collapsedTag: {
-    minWidth: 33,
-    height: 13,
+    minWidth: 38,
+    height: 16,
     borderRadius: 999,
     backgroundColor: '#ED8422',
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
   collapsedTagText: {
     color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '400',
-    lineHeight: 12,
+    fontSize: 11,
+    fontWeight: '600',
+    lineHeight: 13,
   },
   collapsedPreviewImage: {
     width: 103,
@@ -2096,7 +2356,7 @@ const styles = StyleSheet.create({
   },
   halfTopMetaRow: {
     width: 342,
-    height: 20,
+    height: 26,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -2186,9 +2446,37 @@ const styles = StyleSheet.create({
     backgroundColor: '#ED8422',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'visible',
   },
-  halfActionButtonActive: {
-    backgroundColor: '#67A735',
+  favoriteBurstLayer: {
+    position: 'absolute',
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  favoriteBurstPiece: {
+    position: 'absolute',
+  },
+  favoriteBurstBonePrimary: {
+    top: 2,
+    right: 1,
+  },
+  favoriteBurstBoneTopLeft: {
+    top: 5,
+    left: 3,
+  },
+  favoriteBurstBoneBottom: {
+    bottom: 2,
+    right: 6,
+  },
+  favoriteBurstStarLeft: {
+    top: 6,
+    left: 3,
+  },
+  favoriteBurstStarBottom: {
+    bottom: 4,
+    right: 5,
   },
   halfFactsAndHeatRow: {
     width: 342,
@@ -2351,6 +2639,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#CFCFCF',
     position: 'relative',
   },
+  halfWeeklyCardPressed: {
+    opacity: 0.92,
+  },
   halfWeeklyCardImage: {
     width: '100%',
     height: '100%',
@@ -2468,19 +2759,13 @@ const styles = StyleSheet.create({
   },
   fullBackButton: {
     alignSelf: 'flex-start',
+    width: 30,
     height: 30,
     borderRadius: 999,
-    paddingHorizontal: 10,
     backgroundColor: '#F5F2EE',
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
-  },
-  fullBackButtonText: {
-    color: '#3D3D3D',
-    fontSize: 12,
-    fontWeight: '700',
-    lineHeight: 14,
+    justifyContent: 'center',
+    paddingRight: 1,
   },
   fullPanelContent: {
     width: 342,

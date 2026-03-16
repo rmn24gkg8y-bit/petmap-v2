@@ -14,6 +14,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import HeatIcon from '@/assets/icons/heat-icon.svg';
+import SearchIcon from '@/assets/icons/search-icon.svg';
 import {
   SPOT_TYPE_LABELS,
   SPOT_TYPE_OPTIONS,
@@ -31,12 +33,12 @@ const SORT_OPTIONS = [
 ];
 
 const TYPE_BADGE_COLORS = {
-  park: '#2B6B2B',
-  cafe: '#5D3114',
-  hospital: '#5A2F52',
-  store: '#344A7A',
-  indoor: '#2C5E6E',
-  other: '#46526B',
+  park: '#55A462',
+  cafe: '#8C6239',
+  hospital: '#E6E6E6',
+  store: '#0071BC',
+  indoor: '#B02E2A',
+  other: '#8C6239',
 } as const;
 
 type ExploreSpot = ReturnType<typeof usePetMapStore>['filteredSpots'][number];
@@ -95,6 +97,7 @@ function ExploreSpotCard({
   const address = getDisplayAddress(spot);
   const visibleTags = spot.tags.slice(0, 4);
   const typeColor = TYPE_BADGE_COLORS[spot.spotType] ?? TYPE_BADGE_COLORS.other;
+  const typeTextColor = spot.spotType === 'hospital' ? '#303030' : '#FFFFFF';
 
   return (
     <Pressable onPress={onPress} style={styles.spotCard}>
@@ -130,7 +133,7 @@ function ExploreSpotCard({
 
       <View style={styles.spotCardContent}>
         <View style={[styles.typeBadge, { backgroundColor: typeColor }]}>
-          <Text style={styles.typeBadgeText}>{SPOT_TYPE_LABELS[spot.spotType]}</Text>
+          <Text style={[styles.typeBadgeText, { color: typeTextColor }]}>{SPOT_TYPE_LABELS[spot.spotType]}</Text>
         </View>
 
         <View style={styles.spotBottomContent}>
@@ -181,7 +184,7 @@ function ExploreSpotCard({
           </View>
 
           <View style={styles.heatRow}>
-            <Ionicons name="flame-outline" size={13} color="#ED8422" />
+            <HeatIcon width={13} height={13} />
             <Text style={styles.heatText}>{spot.votes}</Text>
           </View>
         </View>
@@ -279,7 +282,7 @@ export default function ExploreScreen() {
 
         <View style={styles.heroContent}>
           <View style={styles.searchBoxWrap}>
-            <Ionicons name="search-outline" size={16} color="#424242" />
+            <SearchIcon width={16} height={16} />
             <TextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -730,17 +733,16 @@ const styles = StyleSheet.create({
   },
   typeBadge: {
     alignSelf: 'flex-start',
-    minHeight: 17,
+    minHeight: 21,
     borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.26)',
   },
   typeBadgeText: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
     letterSpacing: 0.15,
   },
   spotBottomContent: {
