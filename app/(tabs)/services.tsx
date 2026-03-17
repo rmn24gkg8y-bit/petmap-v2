@@ -47,7 +47,11 @@ export default function ServicesScreen() {
   }
 
   function handleOpenActivity(activity: ActivityCollection) {
-    router.push(`/activity/${activity.key}`);
+    if (activity.interactionMode === 'upcoming') {
+      router.push('/activity/store-info');
+    } else {
+      router.push(`/activity/${activity.key}`);
+    }
   }
 
   function renderFeaturedCard(activity: ActivityCollection) {
@@ -98,7 +102,7 @@ export default function ServicesScreen() {
   return (
     <View style={styles.container}>
       <ScrollView
-        bounces={false}
+        alwaysBounceVertical
         showsVerticalScrollIndicator={false}
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 108 }]}>
@@ -149,11 +153,11 @@ export default function ServicesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFEFF',
+    backgroundColor: '#ED8422',
   },
   scrollView: {
     flex: 1,
-    backgroundColor: '#FFFEFF',
+    backgroundColor: '#ED8422',
   },
   scrollContent: {
     flexGrow: 1,

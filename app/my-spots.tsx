@@ -335,6 +335,7 @@ export default function MySpotsScreen() {
           <FlatList
             data={filteredSpots}
             keyExtractor={(item) => item.id}
+            alwaysBounceVertical
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContent}
             ItemSeparatorComponent={() => <View style={styles.listSeparator} />}
