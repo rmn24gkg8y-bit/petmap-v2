@@ -322,6 +322,7 @@ export default function MyFavoritesScreen() {
           <FlatList
             data={filteredFavoriteSpots}
             keyExtractor={(item) => item.id}
+            alwaysBounceVertical
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContent}
             ItemSeparatorComponent={() => <View style={styles.listSeparator} />}

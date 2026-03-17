@@ -1,13 +1,40 @@
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ActivityVisual, EmptyStateCard, PrimaryButton, SectionHeader, SpotCard, TagChip } from '@/components/ui';
-import {
-  getActivityCollectionByKey,
-} from '@/constants/activityCollections';
-import { theme } from '@/constants/theme';
+import HeatIcon from '@/assets/icons/heat-icon.svg';
+import { EmptyStateCard, PrimaryButton } from '@/components/ui';
+import { getActivityCollectionByKey } from '@/constants/activityCollections';
+import { SPOT_TYPE_LABELS } from '@/constants/spotFormOptions';
 import { usePetMapStore } from '@/store/petmap-store';
 import type { Spot } from '@/types/spot';
+import { formatDistance, getDistanceMeters } from '@/utils/distance';
+
+const TYPE_BADGE_COLORS = {
+  park: '#55A462',
+  cafe: '#8C6239',
+  hospital: '#E6E6E6',
+  store: '#0071BC',
+  indoor: '#B02E2A',
+  other: '#8C6239',
+} as const;
+
+function BackArrowIcon() {
+  return (
+    <Svg width={8} height={16} viewBox="0 0 11 19" fill="none">
+      <Path
+        d="M9.5 17.5L1.5 9.5L9.5 1.5"
+        stroke="#FFFFFF"
+        strokeWidth={3}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
 
 function getDisplayAddress(spot: Spot) {
   return (
@@ -17,12 +44,117 @@ function getDisplayAddress(spot: Spot) {
   );
 }
 
+function ServiceInfoSpotCard({
+  spot,
+  distanceText,
+  onPress,
+}: {
+  spot: Spot;
+  distanceText: string;
+  onPress: () => void;
+}) {
+  const district = spot.district.trim() || '未知区域';
+  const address = getDisplayAddress(spot);
+  const visibleTags = spot.tags.slice(0, 4);
+  const typeColor = TYPE_BADGE_COLORS[spot.spotType] ?? TYPE_BADGE_COLORS.other;
+  const typeTextColor = spot.spotType === 'hospital' ? '#303030' : '#FFFFFF';
+
+  return (
+    <Pressable onPress={onPress} style={styles.spotCard}>
+      <View style={styles.spotMediaLayer}>
+        {spot.photoUris?.[0] ? (
+          <Image source={{ uri: spot.photoUris[0] }} style={styles.spotImage} />
+        ) : (
+          <View style={styles.spotImagePlaceholder}>
+            <View style={styles.spotPlaceholderGlowA} />
+            <View style={styles.spotPlaceholderGlowB} />
+            <View style={styles.spotPlaceholderContent}>
+              <View style={styles.spotPlaceholderIconWrap}>
+                <Ionicons name="image-outline" size={16} color="#6A6863" />
+              </View>
+              <Text style={styles.spotPlaceholderTitle}>PetMap Spot</Text>
+              <Text style={styles.spotPlaceholderSubtitle}>暂无图片</Text>
+            </View>
+          </View>
+        )}
+      </View>
+
+      <LinearGradient
+        pointerEvents="none"
+        colors={[
+          'rgba(0,0,0,0)',
+          'rgba(0,0,0,0.12)',
+          'rgba(0,0,0,0.3)',
+          'rgba(0,0,0,0.6)',
+        ]}
+        locations={[0, 0.44, 0.72, 1]}
+        style={styles.spotGradientLayer}
+      />
+
+      <View style={styles.spotCardContent}>
+        <View style={[styles.typeBadge, { backgroundColor: typeColor }]}>
+          <Text style={[styles.typeBadgeText, { color: typeTextColor }]}>{SPOT_TYPE_LABELS[spot.spotType]}</Text>
+        </View>
+
+        <View style={styles.spotBottomContent}>
+          <View>
+            <View style={styles.sourceRow}>
+              <Ionicons name="layers-outline" size={11} color="#ED8422" />
+              <Text style={styles.sourceText}>平台整理</Text>
+            </View>
+
+            <View style={styles.titleRow}>
+              <Text style={styles.spotTitle} numberOfLines={1}>
+                {spot.name}
+              </Text>
+              <Text style={styles.distanceText} numberOfLines={1}>
+                {distanceText}
+              </Text>
+            </View>
+
+            <View style={styles.addressRow}>
+              <Text style={styles.districtText} numberOfLines={1}>
+                {district}
+              </Text>
+              <Text style={styles.addressDot}>·</Text>
+              <Text style={styles.addressDetailText} numberOfLines={1}>
+                {address}
+              </Text>
+            </View>
+
+            <View style={styles.tagsRow}>
+              {visibleTags.map((tag) => (
+                <View key={`${spot.id}-${tag}`} style={styles.tagPill}>
+                  <Text style={styles.tagText} numberOfLines={1}>
+                    {tag}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.heatRow}>
+            <HeatIcon width={13} height={13} />
+            <Text style={styles.heatText}>{spot.votes}</Text>
+          </View>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
 export default function ActivityCollectionScreen() {
   const params = useLocalSearchParams<{ activityKey?: string }>();
-  const { spots, setSelectedSpot } = usePetMapStore();
+  const { spots, setSelectedSpot, userLoc } = usePetMapStore();
+  const insets = useSafeAreaInsets();
   const activity = getActivityCollectionByKey(params.activityKey ?? '');
-  const relatedSpots = activity ? activity.spotIds.map((id) => spots.find((spot) => spot.id === id) ?? null).filter((spot): spot is Spot => spot !== null) : [];
-  const isUpcomingActivity = activity?.interactionMode === 'upcoming';
+  const relatedSpots = activity
+    ? activity.spotIds
+        .map((id) => spots.find((spot) => spot.id === id) ?? null)
+        .filter((spot): spot is Spot => spot !== null)
+    : [];
+
+  const heroHeight = insets.top + 349;
 
   function handleOpenSpot(spotId: string) {
     setSelectedSpot(spotId);
@@ -31,7 +163,7 @@ export default function ActivityCollectionScreen() {
 
   return (
     <View style={styles.container}>
-      <Stack.Screen options={{ title: activity?.title ?? '活动专题' }} />
+      <Stack.Screen options={{ headerShown: false }} />
 
       {!activity ? (
         <View style={styles.emptyWrap}>
@@ -42,110 +174,28 @@ export default function ActivityCollectionScreen() {
           />
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <SectionHeader
-            eyebrow={isUpcomingActivity ? '即将支持' : '活动专题'}
-            title={activity.title}
-            subtitle={activity.summary}
-            style={styles.pageHeader}
-          />
+        <ScrollView
+          style={styles.scrollView}
+          alwaysBounceVertical
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 108 }]}>
+          <View style={[styles.hero, { height: heroHeight }]}>
+            <SafeAreaView edges={['top']} style={styles.safeTopRow}>
+              <Pressable onPress={() => router.back()} style={styles.backButton}>
+                <BackArrowIcon />
+              </Pressable>
+            </SafeAreaView>
 
-          {activity.imageUri ? (
-            <View style={styles.heroImageWrap}>
-              <Image source={{ uri: activity.imageUri }} style={styles.heroImage} />
-              <View style={styles.heroImageOverlay}>
-                <TagChip label={activity.statusLabel} compact />
-                <Text style={styles.heroImageText}>围绕一个主题整理相关地点，当前由平台持续补充，后续也会逐步支持更多活动内容。</Text>
-              </View>
+            <View style={styles.titleSection}>
+              <Text style={styles.title}>本周精选遛狗地点</Text>
+              <Text style={styles.subtitle}>平台每周都会精选适合遛狗的精选地点，总有一个是你喜欢的！</Text>
             </View>
-          ) : (
-            <ActivityVisual
-              title={activity.title}
-              summary={activity.summary}
-              statusLabel={activity.statusLabel}
-              variant="hero"
-              style={styles.heroVisual}
-            />
-          )}
 
-          {isUpcomingActivity ? (
-            <>
-              <View style={styles.upcomingIntroCard}>
-                <Text style={styles.upcomingIntroTitle}>这项能力正在准备中</Text>
-                <Text style={styles.upcomingIntroText}>
-                  当前会先以专题预告形式承接，后续逐步支持活动发布、报名意向收集和更多商家活动能力。
-                </Text>
-              </View>
+            <View style={styles.headerPic} />
+          </View>
 
-              <View style={styles.upcomingFeatureCard}>
-                <Text style={styles.upcomingSectionTitle}>未来会支持什么</Text>
-                <View style={styles.upcomingFeatureList}>
-                  <Text style={styles.upcomingFeatureItem}>适合品牌和商家发布宠物友好活动内容</Text>
-                  <Text style={styles.upcomingFeatureItem}>活动说明、地点信息和专题主视觉会继续补齐</Text>
-                  <Text style={styles.upcomingFeatureItem}>用户可通过反馈表达报名兴趣或内容建议</Text>
-                </View>
-              </View>
-
-              <View style={styles.upcomingActionCard}>
-                <Text style={styles.upcomingActionText}>
-                  如果你对这项能力感兴趣，或者希望平台优先支持某类活动内容，可以先告诉我们。
-                </Text>
-                <View style={styles.upcomingActionRow}>
-                  <Pressable
-                    onPress={() =>
-                      router.push({
-                        pathname: '/feedback',
-                        params: {
-                          type: 'activity',
-                          contextType: 'activity',
-                          activityKey: activity.key,
-                          activityTitle: activity.title,
-                          activitySummary: activity.summary,
-                          activityStatusLabel: activity.statusLabel,
-                        },
-                      })
-                    }
-                    style={styles.feedbackButton}>
-                    <Text style={styles.feedbackButtonText}>去意见反馈</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => router.replace('/(tabs)/services')}
-                    style={styles.secondaryButton}>
-                    <Text style={styles.secondaryButtonText}>返回 Services</Text>
-                  </Pressable>
-                </View>
-              </View>
-            </>
-          ) : (
-            <>
-              <View style={styles.feedbackSection}>
-                <Text style={styles.feedbackHintText}>
-                  如果你发现活动专题信息需要补充或调整，可以直接反馈给平台继续整理。
-                </Text>
-                <Pressable
-                  onPress={() =>
-                    router.push({
-                      pathname: '/feedback',
-                      params: {
-                        type: 'activity',
-                        contextType: 'activity',
-                        activityKey: activity.key,
-                        activityTitle: activity.title,
-                        activitySummary: activity.summary,
-                        activityStatusLabel: activity.statusLabel,
-                      },
-                    })
-                  }
-                  style={styles.feedbackButton}>
-                  <Text style={styles.feedbackButtonText}>反馈活动内容</Text>
-                </Pressable>
-              </View>
-
-              <View style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionTitle}>相关地点推荐</Text>
-                <TagChip label={`${relatedSpots.length} 个`} compact />
-              </View>
-
+          <View style={styles.contentSheet}>
+            <View style={styles.listWrap}>
               {relatedSpots.length === 0 ? (
                 <EmptyStateCard
                   title="暂时没有可展示的关联地点"
@@ -153,26 +203,20 @@ export default function ActivityCollectionScreen() {
                 />
               ) : (
                 relatedSpots.map((spot) => (
-                  <SpotCard
+                  <ServiceInfoSpotCard
                     key={spot.id}
-                    title={spot.name}
-                    address={getDisplayAddress(spot)}
-                    photoUri={spot.photoUris?.[0]}
-                    tags={spot.tags.slice(0, 3)}
-                    description={spot.description}
-                    onPressTop={() => handleOpenSpot(spot.id)}
-                    footer={
-                      <View style={styles.cardFooter}>
-                        <Pressable onPress={() => handleOpenSpot(spot.id)} style={styles.mapButton}>
-                          <Text style={styles.mapButtonText}>去地图看看</Text>
-                        </Pressable>
-                      </View>
+                    spot={spot}
+                    distanceText={
+                      userLoc
+                        ? formatDistance(getDistanceMeters(userLoc, { lat: spot.lat, lng: spot.lng })).replace(/\s+/g, '')
+                        : '距离未知'
                     }
+                    onPress={() => handleOpenSpot(spot.id)}
                   />
                 ))
               )}
-            </>
-          )}
+            </View>
+          </View>
         </ScrollView>
       )}
     </View>
@@ -182,176 +226,260 @@ export default function ActivityCollectionScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.pageBackground,
+    backgroundColor: '#ED8422',
   },
-  content: {
-    padding: theme.spacing.lg,
-    paddingBottom: theme.spacing.xl + theme.spacing.sm,
+  scrollView: {
+    flex: 1,
+    backgroundColor: '#ED8422',
   },
-  pageHeader: {
-    marginBottom: theme.spacing.sm,
+  scrollContent: {
+    flexGrow: 1,
   },
   emptyWrap: {
     flex: 1,
-    padding: theme.spacing.lg,
+    paddingHorizontal: 20,
     justifyContent: 'center',
   },
-  heroImageWrap: {
-    borderRadius: theme.radii.lg,
-    overflow: 'hidden',
-    backgroundColor: theme.colors.cardBackground,
-    ...theme.shadows.card,
+  hero: {
+    position: 'relative',
+    backgroundColor: '#ED8422',
   },
-  heroImage: {
-    width: '100%',
-    height: 180,
-    backgroundColor: theme.colors.surfaceMuted,
+  safeTopRow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingLeft: 16,
+    paddingTop: 6,
+    zIndex: 6,
   },
-  heroImageOverlay: {
-    padding: theme.spacing.md,
-    gap: theme.spacing.sm,
-    backgroundColor: 'rgba(255,255,255,0.96)',
-  },
-  heroImageText: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: theme.colors.textSecondary,
-  },
-  heroVisual: {
-    ...theme.shadows.card,
-  },
-  feedbackSection: {
-    marginTop: theme.spacing.sm,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surfaceMuted,
-    padding: theme.spacing.sm,
-    gap: theme.spacing.sm,
-  },
-  feedbackHintText: {
-    fontSize: 12,
-    lineHeight: 18,
-    color: theme.colors.textSecondary,
-  },
-  feedbackButton: {
-    alignSelf: 'flex-start',
-    borderRadius: theme.radii.pill,
-    borderWidth: 1,
-    borderColor: '#D7E5FF',
-    backgroundColor: theme.colors.primarySoft,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  feedbackButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.primary,
-  },
-  upcomingIntroCard: {
-    marginTop: theme.spacing.sm,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.cardBackground,
-    padding: theme.spacing.md,
-    gap: 6,
-    ...theme.shadows.card,
-  },
-  upcomingIntroTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: theme.colors.textPrimary,
-  },
-  upcomingIntroText: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: theme.colors.textSecondary,
-  },
-  upcomingFeatureCard: {
-    marginTop: theme.spacing.sm,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surfaceMuted,
-    padding: theme.spacing.md,
-    gap: theme.spacing.xs,
-  },
-  upcomingSectionTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: theme.colors.textPrimary,
-  },
-  upcomingFeatureList: {
-    gap: 8,
-  },
-  upcomingFeatureItem: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: theme.colors.textSecondary,
-  },
-  upcomingActionCard: {
-    marginTop: theme.spacing.sm,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.cardBackground,
-    padding: theme.spacing.md,
-    gap: theme.spacing.sm,
-    ...theme.shadows.card,
-  },
-  upcomingActionText: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: theme.colors.textSecondary,
-  },
-  upcomingActionRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.xs,
-  },
-  secondaryButton: {
-    alignSelf: 'flex-start',
-    borderRadius: theme.radii.pill,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.cardBackground,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  secondaryButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.textPrimary,
-  },
-  sectionHeaderRow: {
-    marginTop: theme.spacing.md,
-    marginBottom: theme.spacing.xs,
-    flexDirection: 'row',
+  backButton: {
+    width: 30,
+    height: 30,
+    padding: 10,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  titleSection: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 192,
+    width: 335,
+    maxWidth: '100%',
+    gap: 2,
+    zIndex: 3,
+  },
+  title: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    lineHeight: 28,
+    fontWeight: '700',
+  },
+  subtitle: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    lineHeight: 24,
+    fontWeight: '400',
+  },
+  headerPic: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 10,
+    height: 172,
+    borderRadius: 20,
+    backgroundColor: '#D9D9D9',
+    zIndex: 2,
+  },
+  contentSheet: {
+    flex: 1,
+    minHeight: 520,
+    backgroundColor: '#FFFEFF',
+    paddingTop: 14,
+  },
+  listWrap: {
+    paddingHorizontal: 16,
+  },
+  spotCard: {
+    width: '100%',
+    height: 168,
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: '#D7D2CB',
+    marginBottom: 17,
+  },
+  spotMediaLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+  },
+  spotImage: {
+    width: '100%',
+    height: '100%',
+  },
+  spotImagePlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#D8D2C8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  spotPlaceholderGlowA: {
+    position: 'absolute',
+    top: -24,
+    right: -30,
+    width: 130,
+    height: 130,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  spotPlaceholderGlowB: {
+    position: 'absolute',
+    bottom: -42,
+    left: -28,
+    width: 116,
+    height: 116,
+    borderRadius: 999,
+    backgroundColor: 'rgba(118,112,102,0.2)',
+  },
+  spotPlaceholderContent: {
+    alignItems: 'center',
+  },
+  spotPlaceholderIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  spotPlaceholderTitle: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#55524D',
+  },
+  spotPlaceholderSubtitle: {
+    marginTop: 2,
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#726D66',
+  },
+  spotGradientLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2,
+  },
+  spotCardContent: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 3,
+    paddingHorizontal: 13,
+    paddingTop: 10,
+    paddingBottom: 9,
     justifyContent: 'space-between',
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: theme.colors.textPrimary,
-  },
-  cardFooter: {
-    marginTop: theme.spacing.sm,
-    flexDirection: 'row',
-  },
-  mapButton: {
+  typeBadge: {
     alignSelf: 'flex-start',
-    borderRadius: theme.radii.pill,
-    backgroundColor: theme.colors.primarySoft,
+    minHeight: 21,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderWidth: 1,
-    borderColor: '#D7E5FF',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderColor: 'rgba(255,255,255,0.26)',
   },
-  mapButtonText: {
+  typeBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.15,
+  },
+  spotBottomContent: {
+    position: 'relative',
+    paddingRight: 52,
+  },
+  sourceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 1,
+  },
+  sourceText: {
+    fontSize: 10,
+    lineHeight: 10,
+    fontWeight: '900',
+    color: '#ED8422',
+  },
+  titleRow: {
+    marginTop: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+  },
+  spotTitle: {
+    flexShrink: 1,
+    fontSize: 21,
+    lineHeight: 26,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  distanceText: {
+    marginLeft: 9,
+    fontSize: 12,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.92)',
+  },
+  addressRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  districtText: {
+    flexShrink: 0,
     fontSize: 12,
     fontWeight: '700',
-    color: theme.colors.primary,
+    color: '#FFFFFF',
+  },
+  addressDot: {
+    marginHorizontal: 5,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.75)',
+  },
+  addressDetailText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '400',
+    color: 'rgba(255,255,255,0.88)',
+  },
+  tagsRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 5,
+  },
+  tagPill: {
+    height: 16,
+    minWidth: 31,
+    borderRadius: 999,
+    backgroundColor: 'rgba(237,132,34,0.88)',
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tagText: {
+    fontSize: 9,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.96)',
+  },
+  heatRow: {
+    position: 'absolute',
+    right: 12,
+    bottom: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  heatText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: 'rgba(244,244,244,0.95)',
   },
 });
