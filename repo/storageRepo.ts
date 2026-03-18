@@ -319,3 +319,36 @@ export async function saveInboxReadAtByMessageId(value: Record<string, string>) 
     // Ignore persistence errors for now and keep the in-memory state usable.
   }
 }
+
+// ── Onboarding flags ────────────────────────────────────────────────────────
+
+const HAS_SEEN_ONBOARDING_KEY = 'petmap.hasSeenOnboarding';
+const HAS_SEEN_MAP_GUIDE_KEY = 'petmap.hasSeenMapGuide';
+
+export async function loadHasSeenOnboarding(): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(HAS_SEEN_ONBOARDING_KEY)) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export async function saveHasSeenOnboarding(): Promise<void> {
+  try {
+    await AsyncStorage.setItem(HAS_SEEN_ONBOARDING_KEY, 'true');
+  } catch {}
+}
+
+export async function loadHasSeenMapGuide(): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(HAS_SEEN_MAP_GUIDE_KEY)) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export async function saveHasSeenMapGuide(): Promise<void> {
+  try {
+    await AsyncStorage.setItem(HAS_SEEN_MAP_GUIDE_KEY, 'true');
+  } catch {}
+}

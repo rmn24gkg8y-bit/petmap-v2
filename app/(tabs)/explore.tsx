@@ -15,7 +15,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import HeatIcon from '@/assets/icons/heat-icon.svg';
+import MessageSquareIcon from '@/assets/icons/message-square.svg';
 import SearchIcon from '@/assets/icons/search-icon.svg';
+import DogHero from '@/assets/illustrations/dog-hero.svg';
 import {
   SPOT_TYPE_LABELS,
   SPOT_TYPE_OPTIONS,
@@ -100,7 +102,9 @@ function ExploreSpotCard({
   const typeTextColor = spot.spotType === 'hospital' ? '#303030' : '#FFFFFF';
 
   return (
-    <Pressable onPress={onPress} style={styles.spotCard}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.spotCard, pressed && styles.spotCardPressed]}>
       <View style={styles.spotMediaLayer}>
         {spot.photoUris?.[0] ? (
           <Image source={{ uri: spot.photoUris[0] }} style={styles.spotImage} />
@@ -241,14 +245,14 @@ export default function ExploreScreen() {
   const districtSelectorLabel = selectedDistrict === '全部' ? '区域' : selectedDistrict;
   const typeSelectorLabel = selectedSpotType ? selectedTypeLabel : '类型';
 
-  const heroTopPadding = insets.top + 12;
+  const heroTopPadding = insets.top + 57;
   const messageButtonTop = insets.top + 10;
-  const mascotTopOffset = Math.max(4, Math.round(insets.top * 0.1));
+  const dogTop = insets.top;
 
   function handleSelectSpot(id: string) {
     setSelectedSpot(id);
     setOpenMenu(null);
-    router.navigate('/(tabs)');
+    router.navigate({ pathname: '/(tabs)', params: { openToHalf: '1' } });
   }
 
   function handleHeroTagPress(tag: string) {
@@ -263,21 +267,12 @@ export default function ExploreScreen() {
   return (
     <View style={styles.container}>
       <View style={[styles.hero, { paddingTop: heroTopPadding }]}>
-        <View style={[styles.heroMascotArea, { marginTop: mascotTopOffset }]}>
-          <View style={styles.heroMascotEarLeft} />
-          <View style={styles.heroMascotEarRight} />
-          <View style={styles.heroMascotFace}>
-            <View style={styles.heroMascotEyeRow}>
-              <View style={styles.heroMascotEye} />
-              <View style={styles.heroMascotEye} />
-            </View>
-            <View style={styles.heroMascotNose} />
-            <Ionicons name="paw-outline" size={12} color="#8A5B36" style={styles.heroMascotPaw} />
-          </View>
-        </View>
+        <DogHero width={82} height={108} style={[styles.heroDog, { top: dogTop }]} />
 
-        <Pressable style={[styles.messageButton, { top: messageButtonTop }]}>
-          <Ionicons name="chatbubble-ellipses-outline" size={16} color="#FFFFFF" />
+        <Pressable
+          style={[styles.messageButton, { top: messageButtonTop }]}
+          onPress={() => router.push('/inbox')}>
+          <MessageSquareIcon width={18} height={18} />
         </Pressable>
 
         <View style={styles.heroContent}>
@@ -407,6 +402,8 @@ export default function ExploreScreen() {
           data={visibleSpots}
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
+          decelerationRate="normal"
+          scrollEventThrottle={16}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
             <EmptyStateCard
@@ -451,70 +448,12 @@ const styles = StyleSheet.create({
   },
   hero: {
     backgroundColor: '#ED8422',
-    paddingTop: 4,
-    paddingBottom: 6,
+    paddingBottom: 5,
   },
-  heroMascotArea: {
-    marginLeft: 16,
-    width: 64,
-    height: 64,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  heroMascotEarLeft: {
+  heroDog: {
     position: 'absolute',
-    top: 10,
-    left: 16,
-    width: 16,
-    height: 16,
-    borderRadius: 6,
-    backgroundColor: '#E9BC90',
-    transform: [{ rotate: '-25deg' }],
-  },
-  heroMascotEarRight: {
-    position: 'absolute',
-    top: 10,
-    right: 16,
-    width: 16,
-    height: 16,
-    borderRadius: 6,
-    backgroundColor: '#E9BC90',
-    transform: [{ rotate: '25deg' }],
-  },
-  heroMascotFace: {
-    width: 34,
-    height: 30,
-    borderRadius: 12,
-    backgroundColor: '#F5D5B6',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 6,
-  },
-  heroMascotEyeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  heroMascotEye: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#6B3A1E',
-  },
-  heroMascotNose: {
-    width: 6,
-    height: 5,
-    borderRadius: 4,
-    marginTop: 3,
-    backgroundColor: '#8A5B36',
-  },
-  heroMascotPaw: {
-    position: 'absolute',
-    bottom: -4,
-    right: -4,
+    left: 8,
+    zIndex: 0,
   },
   messageButton: {
     position: 'absolute',
@@ -528,8 +467,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   heroContent: {
-    marginTop: 8,
-    paddingVertical: 8,
+    marginTop: 9,
+    paddingVertical: 6,
     paddingHorizontal: 16,
     gap: 12,
   },
@@ -584,8 +523,7 @@ const styles = StyleSheet.create({
   },
   contentSheet: {
     flex: 1,
-    marginTop: 6,
-    marginHorizontal: 16,
+    marginTop: 4,
     backgroundColor: '#FFFEFF',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
@@ -661,6 +599,9 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
     backgroundColor: '#D7D2CB',
+  },
+  spotCardPressed: {
+    opacity: 0.88,
   },
   spotMediaLayer: {
     ...StyleSheet.absoluteFillObject,

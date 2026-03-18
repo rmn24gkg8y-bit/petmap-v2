@@ -107,7 +107,9 @@ function FavoritesSpotCard({
   const typeTextColor = spot.spotType === 'hospital' ? '#303030' : '#FFFFFF';
 
   return (
-    <Pressable onPress={onPress} style={styles.spotCard}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.spotCard, pressed && styles.spotCardPressed]}>
       <View style={styles.spotMediaLayer}>
         {spot.photoUris?.[0] ? (
           <Image source={{ uri: spot.photoUris[0] }} style={styles.spotImage} />
@@ -225,12 +227,7 @@ export default function MyFavoritesScreen() {
 
   function handleSelectSpot(id: string) {
     setSelectedSpot(id);
-    router.navigate({
-      pathname: '/(tabs)',
-      params: {
-        returnTo: 'my-favorites',
-      },
-    });
+    router.navigate({ pathname: '/(tabs)', params: { openToHalf: '1' } });
   }
 
   const sheetTop = insets.top + 222;
@@ -245,7 +242,7 @@ export default function MyFavoritesScreen() {
 
       <View style={styles.heroLayer}>
         <SafeAreaView edges={['top']} style={styles.safeTopRow}>
-          <Pressable onPress={() => router.navigate('/(tabs)')} style={styles.backButton}>
+          <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}>
             <BackArrowIcon />
           </Pressable>
         </SafeAreaView>
@@ -324,6 +321,8 @@ export default function MyFavoritesScreen() {
             keyExtractor={(item) => item.id}
             alwaysBounceVertical
             showsVerticalScrollIndicator={false}
+            decelerationRate="normal"
+            scrollEventThrottle={16}
             contentContainerStyle={styles.listContent}
             ItemSeparatorComponent={() => <View style={styles.listSeparator} />}
             renderItem={({ item }) => {
@@ -361,6 +360,10 @@ const styles = StyleSheet.create({
     padding: 10,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  backButtonPressed: {
+    opacity: 0.76,
+    transform: [{ scale: 0.94 }],
   },
   safeTopRow: {
     position: 'absolute',
@@ -478,6 +481,9 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
     backgroundColor: '#D7D2CB',
+  },
+  spotCardPressed: {
+    opacity: 0.88,
   },
   spotMediaLayer: {
     ...StyleSheet.absoluteFillObject,

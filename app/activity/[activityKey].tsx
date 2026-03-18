@@ -60,7 +60,7 @@ function ServiceInfoSpotCard({
   const typeTextColor = spot.spotType === 'hospital' ? '#303030' : '#FFFFFF';
 
   return (
-    <Pressable onPress={onPress} style={styles.spotCard}>
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.spotCard, pressed && styles.spotCardPressed]}>
       <View style={styles.spotMediaLayer}>
         {spot.photoUris?.[0] ? (
           <Image source={{ uri: spot.photoUris[0] }} style={styles.spotImage} />
@@ -158,12 +158,18 @@ export default function ActivityCollectionScreen() {
 
   function handleOpenSpot(spotId: string) {
     setSelectedSpot(spotId);
-    router.navigate('/(tabs)');
+    router.navigate({ pathname: '/(tabs)', params: { openToHalf: '1' } });
   }
 
   return (
     <View style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
+
+      {/*
+        白色背景层：从 hero 底部延伸到屏幕底部。
+        底部 overscroll 时露出白色；顶部 overscroll 穿透到 container 橙色。
+      */}
+      <View style={[styles.bottomWhiteBg, { top: heroHeight }]} />
 
       {!activity ? (
         <View style={styles.emptyWrap}>
@@ -178,10 +184,12 @@ export default function ActivityCollectionScreen() {
           style={styles.scrollView}
           alwaysBounceVertical
           showsVerticalScrollIndicator={false}
+          decelerationRate="normal"
+          scrollEventThrottle={16}
           contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 108 }]}>
           <View style={[styles.hero, { height: heroHeight }]}>
             <SafeAreaView edges={['top']} style={styles.safeTopRow}>
-              <Pressable onPress={() => router.back()} style={styles.backButton}>
+              <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}>
                 <BackArrowIcon />
               </Pressable>
             </SafeAreaView>
@@ -228,9 +236,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#ED8422',
   },
+  bottomWhiteBg: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#FFFEFF',
+  },
   scrollView: {
     flex: 1,
-    backgroundColor: '#ED8422',
+    backgroundColor: 'transparent',
   },
   scrollContent: {
     flexGrow: 1,
@@ -259,6 +274,10 @@ const styles = StyleSheet.create({
     padding: 10,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  backButtonPressed: {
+    opacity: 0.76,
+    transform: [{ scale: 0.94 }],
   },
   titleSection: {
     position: 'absolute',
@@ -308,6 +327,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: '#D7D2CB',
     marginBottom: 17,
+  },
+  spotCardPressed: {
+    opacity: 0.88,
   },
   spotMediaLayer: {
     ...StyleSheet.absoluteFillObject,

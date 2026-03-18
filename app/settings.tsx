@@ -1,100 +1,142 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router, Stack } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { SectionHeader, TagChip } from '@/components/ui';
-import { theme } from '@/constants/theme';
+function BackArrowIcon() {
+  return (
+    <Svg width={8} height={16} viewBox="0 0 11 19" fill="none">
+      <Path
+        d="M9.5 17.5L1.5 9.5L9.5 1.5"
+        stroke="#FFFFFF"
+        strokeWidth={3}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
 
-const FUTURE_CAPABILITIES = ['账号与同步', '活动与商家能力', '更完整的审核体系'] as const;
+// ── Section & Item components ────────────────────────────────────────────────
 
-const HELP_LINKS = [
-  {
-    key: 'feedback',
-    label: '去意见反馈',
-    description: '反馈地点信息、活动内容、产品建议或使用问题。',
-    onPress: () => router.push('/feedback'),
-  },
-  {
-    key: 'about',
-    label: '去关于 PetMap',
-    description: '了解 PetMap 的定位、当前阶段与品牌方向。',
-    onPress: () => router.push('/about'),
-  },
-] as const;
+function SectionTitle({ label }: { label: string }) {
+  return <Text style={styles.sectionTitle}>{label}</Text>;
+}
+
+type SettingItemProps = {
+  label: string;
+  rightLabel?: string;
+  showChevron?: boolean;
+  onPress?: () => void;
+  destructive?: boolean;
+};
+
+function SettingItem({ label, rightLabel, showChevron = true, onPress, destructive = false }: SettingItemProps) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.item, pressed && onPress ? styles.itemPressed : null]}>
+      <Text style={[styles.itemLabel, destructive && styles.itemLabelDestructive]}>{label}</Text>
+      <View style={styles.itemRight}>
+        {rightLabel ? <Text style={styles.itemRightLabel}>{rightLabel}</Text> : null}
+        {showChevron ? <Ionicons name="chevron-forward" size={13} color="#B0ABA4" /> : null}
+      </View>
+    </Pressable>
+  );
+}
+
+function SectionGroup({ children }: { children: React.ReactNode }) {
+  return <View style={styles.sectionGroup}>{children}</View>;
+}
+
+// ── Screen ───────────────────────────────────────────────────────────────────
 
 export default function SettingsScreen() {
+  const insets = useSafeAreaInsets();
+
+  function handleNotification() {
+    Alert.alert('通知设置', '通知权限管理即将上线，敬请期待。');
+  }
+
+  function handleLocationInfo() {
+    Alert.alert(
+      '定位与地图说明',
+      'PetMap 会在你使用地图功能时请求位置权限，用于帮助你发现附近的宠物友好地点。\n\n你可以随时在系统设置中调整 PetMap 的定位权限。定位数据不会上传或用于其他用途。',
+    );
+  }
+
+  function handleClearData() {
+    Alert.alert(
+      '清理本地数据',
+      '该功能正在开发中，即将上线。\n\n届时将支持清理本地缓存数据，核心收藏和地点记录不会受影响。',
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <Stack.Screen options={{ title: '设置' }} />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <SectionHeader
-          eyebrow="设置与说明"
-          title="设置"
-          subtitle="这里会集中说明 PetMap 当前的数据状态、内容阶段和常用帮助入口。"
-          style={styles.header}
-        />
+      <Stack.Screen options={{ headerShown: false }} />
 
-        <View style={styles.card}>
-          <Text style={styles.cardEyebrow}>数据与存储</Text>
-          <Text style={styles.cardTitle}>当前以本机保存为主</Text>
-          <Text style={styles.cardText}>
-            你添加的地点、收藏和部分使用状态，当前主要保存在本机，方便先完成轻量记录与管理。云端能力仍在逐步接入，所以不同设备之间的同步体验还在完善中。
-          </Text>
-          <View style={styles.chipRow}>
-            <TagChip label="本机优先" compact />
-            <TagChip label="云端逐步接入" compact />
-          </View>
+      {/* ── Orange Header ────────────────────────────────────────────── */}
+      <SafeAreaView edges={['top']} style={styles.header}>
+        <View style={styles.headerRow}>
+          <Pressable
+            onPress={() => router.back()}
+            style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}>
+            <BackArrowIcon />
+          </Pressable>
+          <Text style={styles.headerTitle}>设置</Text>
+          <View style={styles.backButtonPlaceholder} />
         </View>
+      </SafeAreaView>
 
-        <View style={styles.card}>
-          <Text style={styles.cardEyebrow}>内容与审核</Text>
-          <Text style={styles.cardTitle}>地点与平台内容仍在轻量阶段</Text>
-          <Text style={styles.cardText}>
-            你添加的地点可以继续完善后提交审核。当前平台整理内容和用户补充内容会并行存在，前者由平台持续维护，后者会逐步进入更完整的审核与管理流程。
-          </Text>
-          <View style={styles.infoBlock}>
-            <Text style={styles.infoTitle}>当前你可以这样理解</Text>
-            <Text style={styles.infoText}>地点先支持记录、完善和提交，审核与发布能力正在逐步补齐。</Text>
-          </View>
-        </View>
+      {/* ── Body ─────────────────────────────────────────────────────── */}
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 40 }]}
+        showsVerticalScrollIndicator={false}>
 
-        <View style={styles.card}>
-          <Text style={styles.cardEyebrow}>帮助与反馈</Text>
-          <Text style={styles.cardTitle}>有问题时可以快速找到入口</Text>
-          <View style={styles.linkList}>
-            {HELP_LINKS.map((item, index) => (
-              <Pressable
-                key={item.key}
-                onPress={item.onPress}
-                style={({ pressed }) => [
-                  styles.linkItem,
-                  index < HELP_LINKS.length - 1 ? styles.linkDivider : null,
-                  pressed ? styles.linkPressed : null,
-                ]}>
-                <View style={styles.linkMeta}>
-                  <Text style={styles.linkLabel}>{item.label}</Text>
-                  <Text style={styles.linkDescription}>{item.description}</Text>
-                </View>
-                <Text style={styles.linkAction}>进入</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
+        {/* Section: 通用 */}
+        <SectionTitle label="通用" />
+        <SectionGroup>
+          <SettingItem
+            label="通知设置"
+            rightLabel="即将上线"
+            showChevron={false}
+            onPress={handleNotification}
+          />
+          <View style={styles.divider} />
+          <SettingItem
+            label="定位与地图说明"
+            onPress={handleLocationInfo}
+          />
+          <View style={styles.divider} />
+          <SettingItem
+            label="清理本地数据"
+            onPress={handleClearData}
+          />
+          <View style={styles.divider} />
+          <SettingItem
+            label="版本信息"
+            rightLabel="PetMap v1.0 Beta"
+            showChevron={false}
+          />
+        </SectionGroup>
 
-        <View style={styles.card}>
-          <Text style={styles.cardEyebrow}>关于与未来能力</Text>
-          <Text style={styles.cardTitle}>后续会逐步补齐更多长期能力</Text>
-          <Text style={styles.cardText}>
-            当前先把前台发现、筛选、收藏、地点管理和活动内容链路做顺，后续会再逐步补上更完整的账号、同步和商家能力。
-          </Text>
-          <View style={styles.futureList}>
-            {FUTURE_CAPABILITIES.map((item) => (
-              <View key={item} style={styles.futureItem}>
-                <Text style={styles.futureDot}>•</Text>
-                <Text style={styles.futureText}>{item}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
+        {/* Section: 支持 */}
+        <SectionTitle label="支持" />
+        <SectionGroup>
+          <SettingItem
+            label="意见反馈"
+            onPress={() => router.push('/report/location')}
+          />
+          <View style={styles.divider} />
+          <SettingItem
+            label="关于 PetMap"
+            onPress={() => router.push('/about')}
+          />
+        </SectionGroup>
+
       </ScrollView>
     </View>
   );
@@ -103,126 +145,104 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.pageBackground,
+    backgroundColor: '#FFFEFF',
   },
-  content: {
-    padding: theme.spacing.lg,
-    paddingBottom: theme.spacing.xl + theme.spacing.sm,
-    gap: theme.spacing.md,
-  },
+
+  // ── Header ────────────────────────────────────────────────────────
   header: {
-    marginBottom: 0,
+    backgroundColor: '#ED8422',
   },
-  card: {
-    borderRadius: theme.radii.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.cardBackground,
-    padding: theme.spacing.md,
-    ...theme.shadows.card,
-  },
-  cardEyebrow: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.primary,
-  },
-  cardTitle: {
-    marginTop: 6,
-    fontSize: 17,
-    fontWeight: '800',
-    color: theme.colors.textPrimary,
-  },
-  cardText: {
-    marginTop: theme.spacing.xs,
-    fontSize: 13,
-    lineHeight: 19,
-    color: theme.colors.textSecondary,
-  },
-  chipRow: {
+  headerRow: {
+    height: 48,
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.xs,
-    marginTop: theme.spacing.sm,
+    alignItems: 'center',
+    paddingHorizontal: 16,
   },
-  infoBlock: {
-    marginTop: theme.spacing.sm,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surfaceMuted,
-    padding: theme.spacing.sm,
-    gap: 4,
+  backButton: {
+    width: 30,
+    height: 30,
+    padding: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  infoTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: theme.colors.textPrimary,
+  backButtonPressed: {
+    opacity: 0.76,
+    transform: [{ scale: 0.94 }],
   },
-  infoText: {
+  backButtonPlaceholder: {
+    width: 30,
+    height: 30,
+  },
+  headerTitle: {
+    flex: 1,
+    textAlign: 'center',
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+
+  // ── Scroll ────────────────────────────────────────────────────────
+  scrollView: {
+    flex: 1,
+    backgroundColor: '#F5F3EF',
+  },
+  scrollContent: {
+    paddingTop: 24,
+    paddingHorizontal: 16,
+    gap: 0,
+  },
+
+  // ── Section ───────────────────────────────────────────────────────
+  sectionTitle: {
     fontSize: 12,
-    lineHeight: 18,
-    color: theme.colors.textSecondary,
+    fontWeight: '700',
+    color: '#ED8422',
+    letterSpacing: 0.4,
+    marginBottom: 8,
+    marginTop: 20,
+    paddingHorizontal: 4,
   },
-  linkList: {
-    marginTop: theme.spacing.sm,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surfaceMuted,
-    paddingHorizontal: theme.spacing.sm,
+  sectionGroup: {
+    borderRadius: 16,
+    backgroundColor: '#FFFEFF',
+    overflow: 'hidden',
+    paddingHorizontal: 16,
   },
-  linkItem: {
-    minHeight: 68,
+
+  // ── Item ──────────────────────────────────────────────────────────
+  item: {
+    minHeight: 52,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: theme.spacing.sm,
   },
-  linkDivider: {
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.divider,
+  itemPressed: {
+    opacity: 0.7,
   },
-  linkPressed: {
-    opacity: 0.88,
-  },
-  linkMeta: {
+  itemLabel: {
     flex: 1,
-    paddingVertical: theme.spacing.sm,
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#303030',
+    lineHeight: 22,
   },
-  linkLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: theme.colors.textPrimary,
+  itemLabelDestructive: {
+    color: '#C0392B',
   },
-  linkDescription: {
-    marginTop: 4,
-    fontSize: 12,
-    lineHeight: 18,
-    color: theme.colors.textSecondary,
-  },
-  linkAction: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.primary,
-  },
-  futureList: {
-    marginTop: theme.spacing.sm,
-    gap: 8,
-  },
-  futureItem: {
+  itemRight: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
+    alignItems: 'center',
+    gap: 4,
   },
-  futureDot: {
-    fontSize: 14,
-    lineHeight: 18,
-    color: theme.colors.primary,
-  },
-  futureText: {
-    flex: 1,
+  itemRightLabel: {
     fontSize: 13,
-    lineHeight: 19,
-    color: theme.colors.textSecondary,
+    fontWeight: '400',
+    color: '#B0ABA4',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#F0EEE9',
+    marginLeft: 0,
   },
 });
