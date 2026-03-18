@@ -1,11 +1,13 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
+  Easing,
   Image,
   Linking,
   PanResponder,
@@ -33,16 +35,22 @@ import SheetHandleIcon from '@/assets/icons/sheet-handle.svg';
 import StarBurstIcon from '@/assets/icons/star-burst.svg';
 import CoffeeDefaultMarker from '@/assets/markers/coffee-default.svg';
 import CoffeeSelectedMarker from '@/assets/markers/coffee-selected.svg';
+import CoffeeSmallMarker from '@/assets/markers/coffee-small.svg';
 import MallDefaultMarker from '@/assets/markers/mall-default.svg';
 import MallSelectedMarker from '@/assets/markers/mall-selected.svg';
+import MallSmallMarker from '@/assets/markers/mall-small.svg';
 import ParkDefaultMarker from '@/assets/markers/park-default.svg';
 import ParkSelectedMarker from '@/assets/markers/park-selected.svg';
+import ParkSmallMarker from '@/assets/markers/park-small.svg';
 import PetshopDefaultMarker from '@/assets/markers/petshop-default.svg';
 import PetshopSelectedMarker from '@/assets/markers/petshop-selected.svg';
+import PetshopSmallMarker from '@/assets/markers/petshop-small.svg';
 import UserDefaultMarker from '@/assets/markers/user-default.svg';
 import UserSelectedMarker from '@/assets/markers/user-selected.svg';
+import UserSmallMarker from '@/assets/markers/user-small.svg';
 import VetDefaultMarker from '@/assets/markers/vet-default.svg';
 import VetSelectedMarker from '@/assets/markers/vet-selected.svg';
+import VetSmallMarker from '@/assets/markers/vet-small.svg';
 import { MapQuickActions } from '@/components/map/MapQuickActions';
 import { SpotFormModal } from '@/components/map/SpotFormModal';
 import { ACTIVITY_COLLECTIONS, type ActivityCollection } from '@/constants/activityCollections';
@@ -50,6 +58,7 @@ import { theme } from '@/constants/theme';
 import { usePetMapStore } from '@/store/petmap-store';
 import type { Spot, SpotType } from '@/types/spot';
 import { getDistanceMeters } from '@/utils/distance';
+import { loadHasSeenMapGuide, saveHasSeenMapGuide } from '@/repo/storageRepo';
 
 const INITIAL_REGION: Region = {
   latitude: 31.2215,
@@ -57,6 +66,38 @@ const INITIAL_REGION: Region = {
   latitudeDelta: 0.08,
   longitudeDelta: 0.08,
 };
+
+// Two-tier zoom system (derived from longitudeDelta via log2(360/longitudeDelta))
+// Tier 1 (near):  zoom >= ZOOM_NEAR → markers at full size (scale = 1.0)
+// Transition:     ZOOM_FAR < zoom < ZOOM_NEAR → linear interpolation
+// Tier 2 (far):   zoom <= ZOOM_FAR → markers at minimum size (scale = MARKER_SCALE_MIN)
+//
+// 插值区间故意设窄（3 zoom 级），使每帧 zoom 变化对应的 scale 变化量足够小，
+// 视觉上连续，tracksViewChanges 重捕延迟不易被察觉。
+const ZOOM_NEAR        = 14.5;  // >= this → full-size markers
+const ZOOM_FAR         = 11.5;  // <= this → minimum-size markers
+const MARKER_SCALE_MIN = 0.72;  // minimum marker scale (narrow range → smooth transition)
+
+// Fixed zoom target when the user taps a marker from a far-away view.
+// Must be clearly in Tier 2 (< ZOOM_NEAR) so we never enter full-size mode.
+// At zoom 13.8, markers render at ~92% — readable without being full close-up.
+const MARKER_FOCUS_ZOOM  = 13.8;
+const MARKER_FOCUS_DELTA = 360 / Math.pow(2, MARKER_FOCUS_ZOOM); // ≈ 0.0252
+
+const MARKER_DEFAULT_SVG_SIZE  = 50; // default SVG intrinsic width/height
+const MARKER_SELECTED_SVG_SIZE = 60; // selected SVG intrinsic width/height
+
+function getZoomFromRegion(region: Region): number {
+  return Math.log2(360 / region.longitudeDelta);
+}
+
+function getMarkerBaseScale(zoom: number): number {
+  if (zoom >= ZOOM_NEAR) return 1.0;
+  if (zoom <= ZOOM_FAR)  return MARKER_SCALE_MIN;
+  const t = (zoom - ZOOM_FAR) / (ZOOM_NEAR - ZOOM_FAR);
+  return MARKER_SCALE_MIN + t * (1.0 - MARKER_SCALE_MIN);
+}
+
 type MarkerVisualCategory = 'coffee' | 'mall' | 'park' | 'petshop' | 'user' | 'vet';
 const MARKER_FILTER_OPTIONS: Array<{ key: MarkerVisualCategory; label: string }> = [
   { key: 'coffee', label: '咖啡店' },
@@ -67,6 +108,28 @@ const MARKER_FILTER_OPTIONS: Array<{ key: MarkerVisualCategory; label: string }>
   { key: 'vet', label: '宠物医院' },
 ];
 const ALL_MARKER_FILTER_KEYS = MARKER_FILTER_OPTIONS.map((item) => item.key);
+
+// ── Crossfade thresholds ────────────────────────────────────────────────────
+// ZOOM_DEFAULT_A: zoom level when the app first opens, derived from INITIAL_REGION.
+// Non-selected markers use the large SVG at or above this zoom.
+// Below ZOOM_DEFAULT_A a short 0.5-zoom-level band crossfades to the small visual.
+const ZOOM_DEFAULT_A    = Math.log2(360 / INITIAL_REGION.longitudeDelta); // ≈ 12.14
+const ZOOM_LARGE_MARKER = ZOOM_DEFAULT_A;          // >= this → large SVG only
+const ZOOM_SMALL_FULL   = ZOOM_DEFAULT_A - 0.12;  // <= this → small visual only
+// Transition band: ZOOM_SMALL_FULL < zoom < ZOOM_LARGE_MARKER (≈ 0.12 zoom levels — very narrow)
+
+// ── Density tiers ───────────────────────────────────────────────────────────
+// Non-selected marker count limit, anchored to the default zoom level.
+const DENSITY_MED_COUNT = 20;
+const DENSITY_LOW_COUNT = 8;
+const DENSITY_MIN_COUNT = 3;
+
+function getMaxNonSelectedMarkerCount(zoom: number): number {
+  if (zoom >= ZOOM_DEFAULT_A)           return Infinity;           // default view: show all
+  if (zoom >= ZOOM_DEFAULT_A - 1.5)     return DENSITY_MED_COUNT; // slightly further: 20
+  if (zoom >= ZOOM_DEFAULT_A - 3.0)     return DENSITY_LOW_COUNT; // far: 8
+  return DENSITY_MIN_COUNT;                                        // very far: 3
+}
 
 type SheetStage = 'collapsed' | 'half' | 'full';
 const COLLAPSED_VISIBLE_HEIGHT = 190;
@@ -361,11 +424,22 @@ function renderMarkerVisual(category: MarkerVisualCategory, selected: boolean) {
   return <MarkerComponent />;
 }
 
+function renderSmallMarkerVisual(category: MarkerVisualCategory) {
+  // 36px: clearly smaller than default (39×51) but large enough to read at far zoom
+  const s = 36;
+  if (category === 'coffee')  return <CoffeeSmallMarker  width={s} height={s} />;
+  if (category === 'mall')    return <MallSmallMarker    width={s} height={s} />;
+  if (category === 'park')    return <ParkSmallMarker    width={s} height={s} />;
+  if (category === 'petshop') return <PetshopSmallMarker width={s} height={s} />;
+  if (category === 'vet')     return <VetSmallMarker     width={s} height={s} />;
+  return <UserSmallMarker width={s} height={s} />;
+}
+
 export default function TabOneScreen() {
-  const params = useLocalSearchParams<{ returnTo?: string; returnStatus?: string }>();
+  const params = useLocalSearchParams<{ returnTo?: string; returnStatus?: string; openToHalf?: string }>();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const mapRef = useRef<MapView | null>(null);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [editingSpotId, setEditingSpotId] = useState<string | null>(null);
@@ -377,8 +451,14 @@ export default function TabOneScreen() {
   const [sheetStage, setSheetStage] = useState<SheetStage>('collapsed');
   const [sheetVisibleHeight, setSheetVisibleHeight] = useState(0);
   const [isFilterPanelVisible, setIsFilterPanelVisible] = useState(false);
+  const [isFilterPanelMounted, setIsFilterPanelMounted] = useState(false);
   const [selectedMarkerFilters, setSelectedMarkerFilters] =
     useState<MarkerVisualCategory[]>(ALL_MARKER_FILTER_KEYS);
+  const [currentRegion, setCurrentRegion] = useState<Region>(INITIAL_REGION);
+  const [tracksMarkerChanges, setTracksMarkerChanges] = useState(false);
+  const [deselectingSpotId, setDeselectingSpotId] = useState<string | null>(null);
+  const [heroPhotoIndex, setHeroPhotoIndex] = useState(0);
+  const tracksMarkerChangesTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [formValues, setFormValues] = useState({
     name: '',
     district: '',
@@ -412,6 +492,13 @@ export default function TabOneScreen() {
 
   const inFlightAddressSpotIdsRef = useRef<Set<string>>(new Set());
   const markerScaleValuesRef = useRef<Record<string, Animated.Value>>({});
+  const markerRotateValuesRef = useRef<Record<string, Animated.Value>>({});
+  const recenterTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wobbleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 0 = large SVG visual, 1 = small dot visual; drives crossfade for all non-selected markers
+  const markerCrossfadeRef = useRef(new Animated.Value(0));
+  // Deselect animation: 1 = selected visual fully visible, 0 = gone (fades to default)
+  const deselectAnimRef = useRef(new Animated.Value(1));
   const previousSelectedSpotIdRef = useRef<string | null>(null);
   const sheetSyncedSpotIdRef = useRef<string | null>(null);
   const amapWebKey = process.env.EXPO_PUBLIC_AMAP_WEB_KEY?.trim() ?? '';
@@ -441,6 +528,12 @@ export default function TabOneScreen() {
   const sheetVisibleHeightRef = useRef(0);
   const favoriteButtonScale = useRef(new Animated.Value(1)).current;
   const favoriteBurstProgress = useRef(new Animated.Value(0)).current;
+  const filterPanelAnim = useRef(new Animated.Value(0)).current;
+  // 防止 Marker.onPress 触发后，MapView.onPress 紧接着将选中清掉
+  const markerJustPressedRef = useRef(false);
+
+  // Map Guide (Layer 3 onboarding)
+  const [showMapGuide, setShowMapGuide] = useState(false);
 
   useEffect(() => {
     if (returnToParam !== 'my-spots' && returnToParam !== 'my-favorites') {
@@ -449,6 +542,18 @@ export default function TabOneScreen() {
 
     router.replace('/(tabs)');
   }, [returnToParam]);
+
+  // Load Map Guide state
+  useEffect(() => {
+    loadHasSeenMapGuide().then((seen) => {
+      if (!seen) setShowMapGuide(true);
+    });
+  }, []);
+
+  async function handleDismissMapGuide() {
+    await saveHasSeenMapGuide();
+    setShowMapGuide(false);
+  }
 
   async function requestAmapReverseGeocode(lat: number, lng: number) {
     if (!amapWebKey) {
@@ -538,20 +643,32 @@ export default function TabOneScreen() {
     };
   }, [setUserLoc]);
 
-  function recenterSelectedSpot(duration = 350) {
+  function recenterSelectedSpot(duration = 350, shouldZoom = false) {
     if (!selectedSpot || !mapRef.current) {
       return;
     }
 
-    mapRef.current.animateCamera(
+    if (recenterTimeoutRef.current) {
+      clearTimeout(recenterTimeoutRef.current);
+      recenterTimeoutRef.current = null;
+    }
+
+    const currentTierZoom = getZoomFromRegion(currentRegion);
+
+    // Zoom in only if caller requests it AND we're farther than the fixed focus target.
+    // Never zoom out — if already closer than MARKER_FOCUS_ZOOM, just recenter.
+    const needsZoom = shouldZoom && currentTierZoom < MARKER_FOCUS_ZOOM;
+    const targetDelta = needsZoom ? MARKER_FOCUS_DELTA : currentRegion.latitudeDelta;
+    const targetLngDelta = needsZoom ? MARKER_FOCUS_DELTA : currentRegion.longitudeDelta;
+
+    mapRef.current.animateToRegion(
       {
-        center: {
-          latitude: selectedSpot.lat,
-          longitude: selectedSpot.lng,
-        },
-        zoom: 15,
+        latitude: selectedSpot.lat,
+        longitude: selectedSpot.lng,
+        latitudeDelta: targetDelta,
+        longitudeDelta: targetLngDelta,
       },
-      { duration }
+      duration
     );
   }
 
@@ -567,17 +684,57 @@ export default function TabOneScreen() {
     return collapsedOffset;
   }
 
-  function animateSheetToStage(stage: SheetStage) {
+  function animateSheetToStage(stage: SheetStage, fromStage?: SheetStage) {
+    const toValue = getOffsetForStage(stage);
+    const isExpanding = fromStage === 'collapsed' && stage === 'half';
+    const isCollapsing = fromStage === 'half' && stage === 'collapsed';
+
+    const onDone = ({ finished }: { finished: boolean }) => {
+      if (finished && selectedSpot) recenterSelectedSpot(250);
+    };
+
+    if (isExpanding) {
+      // 先冲过目标 26px（translateY 更小 = 更高），再 spring 回来
+      Animated.sequence([
+        Animated.timing(sheetTranslateY, {
+          toValue: toValue - 26,
+          duration: 210,
+          useNativeDriver: true,
+        }),
+        Animated.spring(sheetTranslateY, {
+          toValue,
+          useNativeDriver: true,
+          bounciness: 8,
+          speed: 11,
+        }),
+      ]).start(onDone);
+      return;
+    }
+
+    if (isCollapsing) {
+      // 先冲过目标 16px（translateY 更大 = 更低），再 spring 回来
+      Animated.sequence([
+        Animated.timing(sheetTranslateY, {
+          toValue: toValue + 16,
+          duration: 170,
+          useNativeDriver: true,
+        }),
+        Animated.spring(sheetTranslateY, {
+          toValue,
+          useNativeDriver: true,
+          bounciness: 4,
+          speed: 14,
+        }),
+      ]).start(onDone);
+      return;
+    }
+
     Animated.spring(sheetTranslateY, {
-      toValue: getOffsetForStage(stage),
+      toValue,
       useNativeDriver: true,
       bounciness: 0,
-      speed: 18,
-    }).start(({ finished }) => {
-      if (finished && selectedSpot) {
-        recenterSelectedSpot(250);
-      }
-    });
+      speed: 17,
+    }).start(onDone);
   }
 
   function getDragBoundsForStage(stage: SheetStage) {
@@ -660,18 +817,37 @@ export default function TabOneScreen() {
     }
 
     if (sheetSyncedSpotIdRef.current === selectedSpotId) {
+      // Late-arrival: openToHalf param arrived after selectedSpot was already synced.
+      // This happens when the Zustand store update propagates before the navigation params.
+      if (params.openToHalf === '1') {
+        router.setParams({ openToHalf: undefined });
+        setSheetStage('half');
+        animateSheetToStage('half', 'collapsed');
+      }
       return;
     }
 
     sheetSyncedSpotIdRef.current = selectedSpotId;
-    setSheetStage('collapsed');
-    sheetTranslateY.setValue(collapsedOffset);
-    sheetOffsetRef.current = collapsedOffset;
-    const nextCollapsedVisibleHeight = Math.max(collapsedSheetHeight - sheetBottomOverlap, 0);
-    sheetVisibleHeightRef.current = nextCollapsedVisibleHeight;
-    setSheetVisibleHeight(nextCollapsedVisibleHeight);
-    recenterSelectedSpot(250);
-  }, [collapsedOffset, collapsedSheetHeight, selectedSpot?.id, sheetBottomOverlap, sheetTranslateY]);
+    const expandToHalf = params.openToHalf === '1';
+    if (expandToHalf) {
+      // Consume the flag immediately so subsequent map-internal marker taps stay at collapsed.
+      router.setParams({ openToHalf: undefined });
+      setSheetStage('half');
+      sheetTranslateY.setValue(halfOffset);
+      sheetOffsetRef.current = halfOffset;
+      sheetVisibleHeightRef.current = halfVisibleHeight;
+      setSheetVisibleHeight(halfVisibleHeight);
+    } else {
+      // Map-internal marker tap: collapsed peek.
+      setSheetStage('collapsed');
+      sheetTranslateY.setValue(collapsedOffset);
+      sheetOffsetRef.current = collapsedOffset;
+      const nextCollapsedVisibleHeight = Math.max(collapsedSheetHeight - sheetBottomOverlap, 0);
+      sheetVisibleHeightRef.current = nextCollapsedVisibleHeight;
+      setSheetVisibleHeight(nextCollapsedVisibleHeight);
+    }
+    recenterSelectedSpot(250, true); // zoom toward first-tier boundary on initial selection
+  }, [collapsedOffset, collapsedSheetHeight, halfOffset, halfVisibleHeight, params.openToHalf, selectedSpot?.id, sheetBottomOverlap, sheetTranslateY]);
 
   useEffect(() => {
     if (!selectedSpot) {
@@ -685,13 +861,9 @@ export default function TabOneScreen() {
     setSheetVisibleHeight(nextHeight);
   }, [fullSheetHeight, selectedSpot, sheetBottomOverlap, sheetStage]);
 
-  useEffect(() => {
-    if (!selectedSpot) {
-      return;
-    }
-
-    recenterSelectedSpot();
-  }, [selectedSpot, sheetVisibleHeight]);
+  // NOTE: recentering on sheetVisibleHeight change is handled by animateSheetToStage's
+  // onDone callback. We intentionally do NOT call recenterSelectedSpot here to avoid
+  // overriding the zoom-in animation started by the selectedSpot?.id effect above.
 
   useEffect(() => {
     console.log('[Map][addressEffect]', {
@@ -813,7 +985,7 @@ export default function TabOneScreen() {
             gestureState.vy
           );
           setSheetStage(nextStage);
-          animateSheetToStage(nextStage);
+          animateSheetToStage(nextStage, dragStageRef.current);
         },
         onPanResponderTerminate: () => {
           if (!selectedSpot) {
@@ -1112,11 +1284,12 @@ export default function TabOneScreen() {
       .join(' · ');
     const shareAddress = selectedSpot.formattedAddress?.trim() || fallbackAddress || '地址待补充';
 
+    const typeLabel = COLLAPSED_TYPE_LABELS[selectedSpot.spotType] ?? '';
     const lines = [
-      `我在 PetMap 发现一个地点：${selectedSpot.name}`,
-      `地址：${shareAddress}`,
+      `我在 PetMap 发现了一个宠物友好地点：${selectedSpot.name}`,
+      typeLabel ? `类型：${typeLabel}` : null,
+      shareAddress ? `地址：${shareAddress}` : null,
       selectedSpot.description ? `简介：${selectedSpot.description}` : null,
-      `坐标：${selectedSpot.lat.toFixed(6)}, ${selectedSpot.lng.toFixed(6)}`,
     ].filter((line): line is string => Boolean(line));
 
     try {
@@ -1134,14 +1307,11 @@ export default function TabOneScreen() {
     }
 
     router.push({
-      pathname: '/feedback',
+      pathname: '/report/location',
       params: {
-        type: 'spot',
-        contextType: 'spot',
         spotId: selectedSpot.id,
         spotName: selectedSpot.name,
         spotAddress: selectedSpotDisplayAddress,
-        spotIdentityLabel: sourceInfoDisplay?.label ?? collapsedTypeLabel,
       },
     });
   }
@@ -1284,6 +1454,49 @@ export default function TabOneScreen() {
     [selectedMarkerFilters, spots]
   );
 
+  const currentZoom = getZoomFromRegion(currentRegion);
+  const markerBaseScale = getMarkerBaseScale(currentZoom);
+
+  // Stable priority set: which spots to actually render as markers.
+  // selected spot is always included; non-selected limited by zoom tier.
+  const markerDisplayIds = useMemo(() => {
+    const selectedId = selectedSpot?.id ?? null;
+    const maxCount = getMaxNonSelectedMarkerCount(currentZoom);
+
+    // Stable sort: system > user, verified first, higher votes first, id as tiebreaker
+    const sorted = [...visibleSpots].sort((a, b) => {
+      if (a.source !== b.source) return a.source === 'system' ? -1 : 1;
+      const aV = a.verified ? 1 : 0;
+      const bV = b.verified ? 1 : 0;
+      if (aV !== bV) return bV - aV;
+      if (b.votes !== a.votes) return b.votes - a.votes;
+      return a.id.localeCompare(b.id);
+    });
+
+    const ids = new Set<string>();
+    if (selectedId) ids.add(selectedId);
+
+    let added = 0;
+    for (const spot of sorted) {
+      if (ids.has(spot.id)) continue; // already added (selected)
+      if (added >= maxCount) break;
+      ids.add(spot.id);
+      added++;
+    }
+    return ids;
+  }, [visibleSpots, selectedSpot?.id, currentZoom]);
+
+  function handleRegionChangeComplete(region: Region) {
+    setCurrentRegion(region);
+    if (tracksMarkerChangesTimeoutRef.current) {
+      clearTimeout(tracksMarkerChangesTimeoutRef.current);
+    }
+    setTracksMarkerChanges(true);
+    tracksMarkerChangesTimeoutRef.current = setTimeout(() => {
+      setTracksMarkerChanges(false);
+    }, 300);
+  }
+
   useEffect(() => {
     if (!selectedSpot) {
       return;
@@ -1297,6 +1510,81 @@ export default function TabOneScreen() {
       clearSelectedSpot();
     }
   }, [clearSelectedSpot, selectedMarkerFilters, selectedSpot]);
+
+  // When selectedSpot changes, briefly enable tracksViewChanges on all markers
+  // so the native snapshot picks up the selected/deselected SVG switch immediately.
+  // Also reset the hero photo carousel index to the first frame.
+  useEffect(() => {
+    if (tracksMarkerChangesTimeoutRef.current) {
+      clearTimeout(tracksMarkerChangesTimeoutRef.current);
+    }
+    setTracksMarkerChanges(true);
+    tracksMarkerChangesTimeoutRef.current = setTimeout(() => {
+      setTracksMarkerChanges(false);
+    }, 400);
+    setHeroPhotoIndex(0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSpot?.id]);
+
+  const filterBackdropOpacity = filterPanelAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  const filterPanelScale = filterPanelAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.84, 1],
+  });
+  const filterPanelTranslateY = filterPanelAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [22, 0],
+  });
+  const filterPanelOpacity = filterPanelAnim.interpolate({
+    inputRange: [0, 0.35, 1],
+    outputRange: [0, 0.65, 1],
+  });
+
+  // Animate crossfade value whenever settled zoom changes.
+  // tracksMarkerChanges is already true for 300ms after regionChangeComplete,
+  // which covers the 200ms animation window.
+  useEffect(() => {
+    let target: number;
+    if (currentZoom >= ZOOM_LARGE_MARKER) {
+      target = 0;
+    } else if (currentZoom <= ZOOM_SMALL_FULL) {
+      target = 1;
+    } else {
+      target = (ZOOM_LARGE_MARKER - currentZoom) / (ZOOM_LARGE_MARKER - ZOOM_SMALL_FULL);
+    }
+    Animated.timing(markerCrossfadeRef.current, {
+      toValue: target,
+      duration: 120,
+      useNativeDriver: true,
+    }).start();
+  }, [currentZoom]);
+
+  function openFilterPanel() {
+    setIsFilterPanelMounted(true);
+    setIsFilterPanelVisible(true);
+    filterPanelAnim.setValue(0);
+    Animated.spring(filterPanelAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      bounciness: 7,
+      speed: 16,
+    }).start();
+  }
+
+  function closeFilterPanel() {
+    if (!isFilterPanelVisible) return;
+    setIsFilterPanelVisible(false);
+    Animated.timing(filterPanelAnim, {
+      toValue: 0,
+      duration: 150,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) setIsFilterPanelMounted(false);
+    });
+  }
 
   function toggleMarkerFilter(category: MarkerVisualCategory) {
     setSelectedMarkerFilters((current) =>
@@ -1318,39 +1606,193 @@ export default function TabOneScreen() {
     return markerScaleValuesRef.current[spotId];
   }
 
+  function getMarkerRotateValue(spotId: string) {
+    if (!markerRotateValuesRef.current[spotId]) {
+      markerRotateValuesRef.current[spotId] = new Animated.Value(0);
+    }
+
+    return markerRotateValuesRef.current[spotId];
+  }
+
   useEffect(() => {
     const nextSelectedSpotId = selectedSpot?.id ?? null;
     const previousSelectedSpotId = previousSelectedSpotIdRef.current;
 
+    // Cancel any pending wobble from a previous selection
+    if (wobbleTimerRef.current) {
+      clearTimeout(wobbleTimerRef.current);
+      wobbleTimerRef.current = null;
+    }
+
     if (previousSelectedSpotId && previousSelectedSpotId !== nextSelectedSpotId) {
-      Animated.timing(getMarkerScaleValue(previousSelectedSpotId), {
-        toValue: 1,
-        duration: 130,
-        useNativeDriver: true,
-      }).start();
+      const prevScale = getMarkerScaleValue(previousSelectedSpotId);
+      if (nextSelectedSpotId === null) {
+        // True deselect: brief shrink-snap gives "dropping back to default" feel
+        Animated.sequence([
+          Animated.timing(prevScale, {
+            toValue: 0.88,
+            duration: 80,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(prevScale, {
+            toValue: 1.0,
+            duration: 100,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]).start();
+      } else {
+        // Switching to another marker: quick reset
+        Animated.timing(prevScale, { toValue: 1, duration: 130, useNativeDriver: true }).start();
+      }
+      getMarkerRotateValue(previousSelectedSpotId).stopAnimation();
+      getMarkerRotateValue(previousSelectedSpotId).setValue(0);
     }
 
     if (nextSelectedSpotId) {
+      // Cancel any in-progress deselect animation (user re-selected while animating)
+      deselectAnimRef.current.stopAnimation();
+      deselectAnimRef.current.setValue(0);
+      setDeselectingSpotId(null);
       const selectedMarkerScale = getMarkerScaleValue(nextSelectedSpotId);
+      const selectedMarkerRotate = getMarkerRotateValue(nextSelectedSpotId);
       selectedMarkerScale.stopAnimation();
-      selectedMarkerScale.setValue(1);
-      Animated.sequence([
-        Animated.timing(selectedMarkerScale, {
-          toValue: 1.16,
-          duration: 95,
-          useNativeDriver: true,
-        }),
-        Animated.spring(selectedMarkerScale, {
-          toValue: 1.08,
-          useNativeDriver: true,
-          bounciness: 4,
-          speed: 18,
-        }),
-      ]).start();
+      // 起始值 = 当前 zoom 下 marker 的实际视觉大小（default SVG 50 在 markerVisualBox 60 中的比例）
+      // 这样 selected marker 在切换瞬间尺寸连续，不跳动；然后随地图 zoom 同步 grow 到 1.0
+      selectedMarkerScale.setValue(markerBaseScale * (MARKER_DEFAULT_SVG_SIZE / MARKER_SELECTED_SVG_SIZE));
+      selectedMarkerRotate.stopAnimation();
+      selectedMarkerRotate.setValue(0);
+
+      // Phase A: 与地图 zoom 同步的 grow（250ms），用 Easing.out 模拟地图动画曲线
+      Animated.timing(selectedMarkerScale, {
+        toValue: 1.0,
+        duration: 250,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start();
+
+      // Phase B: wobble starts AFTER the map recenter animation completes (~250ms).
+      // Delay is 270ms = recenter duration (250) + small buffer (20).
+      wobbleTimerRef.current = setTimeout(() => {
+        wobbleTimerRef.current = null;
+        const rotate = getMarkerRotateValue(nextSelectedSpotId);
+        rotate.stopAnimation();
+        rotate.setValue(0);
+        Animated.sequence([
+          Animated.timing(rotate, { toValue: 8, duration: 90, useNativeDriver: true }),
+          Animated.timing(rotate, { toValue: -6, duration: 80, useNativeDriver: true }),
+          Animated.timing(rotate, { toValue: 4, duration: 70, useNativeDriver: true }),
+          Animated.timing(rotate, { toValue: -2, duration: 60, useNativeDriver: true }),
+          Animated.timing(rotate, { toValue: 0, duration: 50, useNativeDriver: true }),
+        ]).start();
+      }, 270);
     }
 
     previousSelectedSpotIdRef.current = nextSelectedSpotId;
   }, [selectedSpot?.id]);
+
+  // Derived crossfade opacity values — shared across all non-selected markers.
+  // Non-overlapping sequential switch: large fades out first (0→0.45), then small fades in (0.55→1).
+  // The 0.45-0.55 gap (≈6ms at 120ms duration) is imperceptible, but eliminates the
+  // "both markers at half-opacity" mid-state that made the transition look awkward.
+  const largeLayerOpacity = markerCrossfadeRef.current.interpolate({
+    inputRange: [0, 0.45, 0.55, 1],
+    outputRange: [1, 0, 0, 0],
+    extrapolate: 'clamp',
+  });
+  const smallLayerOpacity = markerCrossfadeRef.current.interpolate({
+    inputRange: [0, 0.45, 0.55, 1],
+    outputRange: [0, 0, 1, 1],
+    extrapolate: 'clamp',
+  });
+
+  // ── Two-pass marker rendering ────────────────────────────────────────────────
+  // selectedVisibleSpot is pulled out so it can be rendered LAST (on top of all others).
+  // During deselect animation, keep the deselecting spot in Pass 2 so it stays on top.
+  const selectedVisibleSpot = selectedSpot
+    ? (visibleSpots.find(s => s.id === selectedSpot.id) ?? null)
+    : deselectingSpotId
+    ? (visibleSpots.find(s => s.id === deselectingSpotId) ?? null)
+    : null;
+
+  // Derived opacity for the default layer during deselect (inverse of deselectAnimRef)
+  const deselectDefaultLayerOpacity = deselectAnimRef.current.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
+  // Renders a single Marker. Called in two passes:
+  //   Pass 1 — all non-selected spots
+  //   Pass 2 — selected spot alone (last child of MapView = top of paint stack)
+  const renderSingleMarker = (spot: Spot) => {
+    if (!markerDisplayIds.has(spot.id) && deselectingSpotId !== spot.id) return null;
+    const isSelected = selectedSpot?.id === spot.id;
+    const isDeselecting = !isSelected && deselectingSpotId === spot.id;
+    const markerScale = getMarkerScaleValue(spot.id);
+    const markerVisualCategory = resolveMarkerVisualCategory(spot);
+    if (!markerVisualCategory) return null;
+    const markerRotateDeg = getMarkerRotateValue(spot.id).interpolate({
+      inputRange: [-10, 0, 10],
+      outputRange: ['-10deg', '0deg', '10deg'],
+    });
+    return (
+      <Marker
+        key={spot.id}
+        coordinate={{ latitude: spot.lat, longitude: spot.lng }}
+        tracksViewChanges={tracksMarkerChanges || isSelected}
+        zIndex={isSelected ? 999 : 1}
+        onPress={() => {
+          // 锁住 100ms，防止 MapView.onPress 紧随其后清掉选中
+          markerJustPressedRef.current = true;
+          setTimeout(() => { markerJustPressedRef.current = false; }, 100);
+          setSelectedSpot(spot.id);
+        }}>
+        {/* 最外层：zoom 基础缩放（selected 时固定 1，避免 regionChangeComplete 跳动）*/}
+        <View style={{ transform: [{ scale: isSelected ? 1 : markerBaseScale }] }}>
+          <Animated.View style={[styles.markerContainer, { transform: [{ scale: markerScale }] }]}>
+            <Animated.View
+              style={{
+                transform: [
+                  { translateY: 24 },
+                  { rotate: markerRotateDeg },
+                  { translateY: -24 },
+                ],
+              }}>
+              {/* 固定 60×60 容器，避免 default(50)/selected(60) SVG 尺寸差导致布局跳动 */}
+              <View style={styles.markerVisualBox}>
+                {isSelected ? (
+                  // Selected: always large SVG, no crossfade
+                  renderMarkerVisual(markerVisualCategory, true)
+                ) : isDeselecting ? (
+                  // Deselect animation: selected SVG fades out, default SVG fades in
+                  <>
+                    <Animated.View style={[styles.markerLayer, { opacity: deselectAnimRef.current }]}>
+                      {renderMarkerVisual(markerVisualCategory, true)}
+                    </Animated.View>
+                    <Animated.View style={[styles.markerLayer, { opacity: deselectDefaultLayerOpacity }]}>
+                      {renderMarkerVisual(markerVisualCategory, false)}
+                    </Animated.View>
+                  </>
+                ) : (
+                  // Non-selected: two layers that crossfade between large SVG and small dot
+                  <>
+                    <Animated.View style={[styles.markerLayer, { opacity: largeLayerOpacity }]}>
+                      {renderMarkerVisual(markerVisualCategory, false)}
+                    </Animated.View>
+                    <Animated.View style={[styles.markerLayer, { opacity: smallLayerOpacity }]}>
+                      {renderSmallMarkerVisual(markerVisualCategory)}
+                    </Animated.View>
+                  </>
+                )}
+              </View>
+            </Animated.View>
+          </Animated.View>
+        </View>
+      </Marker>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -1365,28 +1807,37 @@ export default function TabOneScreen() {
           bottom: Math.max(sheetVisibleHeight - 24, 0),
         }}
         onLongPress={handleLongPress}
-        showsUserLocation>
-        {visibleSpots.map((spot) => {
-          const isSelected = selectedSpot?.id === spot.id;
-          const markerScale = getMarkerScaleValue(spot.id);
-          const markerVisualCategory = resolveMarkerVisualCategory(spot);
-
-          if (!markerVisualCategory) {
-            return null;
+        onRegionChangeComplete={handleRegionChangeComplete}
+        onPress={() => {
+          // 点击空白区域时取消选中；Marker.onPress 触发后会短暂锁住这里
+          if (selectedSpot && !markerJustPressedRef.current) {
+            const spotId = selectedSpot.id;
+            // Start deselect visual animation (selected SVG → default SVG)
+            deselectAnimRef.current.stopAnimation();
+            deselectAnimRef.current.setValue(1);
+            setDeselectingSpotId(spotId);
+            Animated.timing(deselectAnimRef.current, {
+              toValue: 0,
+              duration: 150,
+              easing: Easing.out(Easing.quad),
+              useNativeDriver: true,
+            }).start(() => {
+              setDeselectingSpotId(null);
+            });
+            // Clear store immediately so BottomSheet starts closing
+            clearSelectedSpot();
           }
+        }}
+        showsUserLocation>
 
-          return (
-            <Marker
-              key={spot.id}
-              coordinate={{ latitude: spot.lat, longitude: spot.lng }}
-              tracksViewChanges={false}
-              onPress={() => setSelectedSpot(spot.id)}>
-              <Animated.View style={[styles.markerContainer, { transform: [{ scale: markerScale }] }]}>
-                {renderMarkerVisual(markerVisualCategory, isSelected)}
-              </Animated.View>
-            </Marker>
-          );
-        })}
+        {/* Pass 1: all non-selected markers */}
+        {visibleSpots
+          .filter(spot => spot.id !== selectedVisibleSpot?.id)
+          .map(spot => renderSingleMarker(spot))}
+
+        {/* Pass 2: selected marker rendered last → always on top of paint stack */}
+        {selectedVisibleSpot ? renderSingleMarker(selectedVisibleSpot) : null}
+
       </MapView>
 
       <MapQuickActions
@@ -1394,18 +1845,33 @@ export default function TabOneScreen() {
         isFilterActive={isFilterPanelVisible}
         favoriteCount={favoriteCount}
         userSpotCount={userSpots.length}
-        onPressFilter={() => setIsFilterPanelVisible(true)}
+        onPressFilter={() => openFilterPanel()}
         onPressFavorites={() => router.push('/my-favorites')}
         onPressMySpots={() => router.push('/my-spots')}
       />
 
-      {isFilterPanelVisible ? (
-        <View style={styles.filterOverlay}>
-          <Pressable style={styles.filterBackdrop} onPress={() => setIsFilterPanelVisible(false)} />
-          <View style={styles.filterPanel}>
+      {isFilterPanelMounted ? (
+        <View style={styles.filterOverlay} pointerEvents={isFilterPanelVisible ? 'box-none' : 'none'}>
+          <Animated.View
+            style={[styles.filterBackdrop, { opacity: filterBackdropOpacity }]}
+            pointerEvents={isFilterPanelVisible ? 'auto' : 'none'}>
+            <Pressable style={StyleSheet.absoluteFillObject} onPress={closeFilterPanel} />
+          </Animated.View>
+
+          <Animated.View
+            style={[
+              styles.filterPanel,
+              {
+                opacity: filterPanelOpacity,
+                transform: [
+                  { scale: filterPanelScale },
+                  { translateY: filterPanelTranslateY },
+                ],
+              },
+            ]}>
             <View style={styles.filterPanelHeader}>
               <Text style={styles.filterPanelTitle}>地图筛选</Text>
-              <Pressable onPress={() => setIsFilterPanelVisible(false)} style={styles.filterCloseButton}>
+              <Pressable onPress={closeFilterPanel} style={styles.filterCloseButton}>
                 <Ionicons name="close" size={16} color="#4A4A4A" />
               </Pressable>
             </View>
@@ -1432,11 +1898,11 @@ export default function TabOneScreen() {
               <Pressable onPress={handleSelectAllMarkerFilters} style={styles.filterSecondaryButton}>
                 <Text style={styles.filterSecondaryButtonText}>重置/全选</Text>
               </Pressable>
-              <Pressable onPress={() => setIsFilterPanelVisible(false)} style={styles.filterPrimaryButton}>
+              <Pressable onPress={closeFilterPanel} style={styles.filterPrimaryButton}>
                 <Text style={styles.filterPrimaryButtonText}>应用</Text>
               </Pressable>
             </View>
-          </View>
+          </Animated.View>
         </View>
       ) : null}
 
@@ -1449,8 +1915,25 @@ export default function TabOneScreen() {
               bottom: -sheetBottomOverlap,
               paddingBottom: sheetContainerBottomInset,
               transform: [{ translateY: sheetTranslateY }],
+              // 背景交给内层 LinearGradient，外壳保持透明
+              backgroundColor: 'transparent',
             },
           ]}>
+
+          {/* ── Frosted glass background ── */}
+          {/* collapsed/half: 顶亮底冷的渐变 → 磨砂玻璃冷光效果 */}
+          {/* full: 接近不透明白底 → 保证内容可读 */}
+          <LinearGradient
+            colors={
+              sheetStage === 'full'
+                ? ['rgba(255,254,255,0.97)', 'rgba(255,254,255,0.97)']
+                : ['rgba(255,255,255,0.88)', 'rgba(242,246,255,0.72)']
+            }
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={styles.sheetGlassBackground}
+          />
+
           <View style={styles.sheetHandleArea} {...sheetPanResponder.panHandlers}>
             <SheetHandleIcon width={33} height={14} />
           </View>
@@ -1459,7 +1942,7 @@ export default function TabOneScreen() {
             <Pressable
               onPress={() => {
                 setSheetStage('half');
-                animateSheetToStage('half');
+                animateSheetToStage('half', 'collapsed');
               }}
               style={({ pressed }) => [
                 styles.collapsedSummaryBlock,
@@ -1735,29 +2218,69 @@ export default function TabOneScreen() {
               style={styles.sheetScroll}
               contentContainerStyle={styles.fullContent}
               showsVerticalScrollIndicator={false}>
+
+              {/* ──────── §1 Hero Section ──────── */}
               <View style={styles.fullTopPhotoGestureArea}>
-                {fullHeroPhoto ? (
-                  <Image source={{ uri: fullHeroPhoto }} style={styles.fullTopPhoto} />
-                ) : (
+                {halfPhotoUris.length === 0 ? (
+                  // No photos → placeholder
                   <View style={styles.fullTopPhotoPlaceholder}>
                     <Text style={styles.fullTopPhotoPlaceholderText}>小狗摄影在路上</Text>
+                  </View>
+                ) : halfPhotoUris.length === 1 ? (
+                  // Single photo → plain image
+                  <Image source={{ uri: halfPhotoUris[0] }} style={styles.fullTopPhoto} />
+                ) : (
+                  // Multiple photos → horizontal paging carousel
+                  <View>
+                    <ScrollView
+                      horizontal
+                      pagingEnabled
+                      showsHorizontalScrollIndicator={false}
+                      decelerationRate="fast"
+                      onMomentumScrollEnd={(e) => {
+                        const idx = Math.round(
+                          e.nativeEvent.contentOffset.x / windowWidth,
+                        );
+                        setHeroPhotoIndex(idx);
+                      }}>
+                      {halfPhotoUris.map((uri) => (
+                        <Image
+                          key={`hero-${uri}`}
+                          source={{ uri }}
+                          style={[styles.fullTopPhoto, { width: windowWidth }]}
+                        />
+                      ))}
+                    </ScrollView>
+                    {/* Dot page indicator */}
+                    <View style={styles.heroDotRow}>
+                      {halfPhotoUris.map((_, i) => (
+                        <View
+                          key={i}
+                          style={[styles.heroDot, i === heroPhotoIndex ? styles.heroDotActive : null]}
+                        />
+                      ))}
+                    </View>
                   </View>
                 )}
               </View>
 
+              {/* White card overlaps the bottom edge of hero */}
               <View style={styles.fullDetailPanel}>
                 <View style={styles.fullBackRow}>
                   <Pressable
                     onPress={() => {
                       setSheetStage('half');
-                      animateSheetToStage('half');
+                      animateSheetToStage('half', 'full');
                     }}
                     style={styles.fullBackButton}>
                     <BackArrowIcon />
                   </Pressable>
                 </View>
+
                 <View style={styles.fullPanelContent}>
-                  <View style={styles.fullPanelSummaryBlock}>
+
+                  {/* ──────── §2 Summary Section ──────── */}
+                  <View style={styles.fullSummarySection}>
                     <View style={styles.halfTopMetaRow}>
                       <View style={[styles.collapsedTypeBadge, { backgroundColor: selectedTypeBadgePalette.background }]}>
                         <Text style={[styles.collapsedTypeBadgeText, { color: selectedTypeBadgePalette.text }]} numberOfLines={1}>
@@ -1767,9 +2290,7 @@ export default function TabOneScreen() {
                       {sourceInfoDisplay ? (
                         <View style={styles.collapsedSourceInfo}>
                           <View style={[styles.collapsedSourceIcon, { borderColor: sourceInfoDisplay.color }]}>
-                            <View
-                              style={[styles.collapsedSourceIconDot, { backgroundColor: sourceInfoDisplay.color }]}
-                            />
+                            <View style={[styles.collapsedSourceIconDot, { backgroundColor: sourceInfoDisplay.color }]} />
                           </View>
                           <Text style={[styles.collapsedSourceInfoText, { color: sourceInfoDisplay.color }]}>
                             {sourceInfoDisplay.label}
@@ -1778,108 +2299,117 @@ export default function TabOneScreen() {
                       ) : null}
                     </View>
 
-                    <View style={styles.fullPanelTitleRow}>
-                      <Text style={styles.fullPanelTitle} numberOfLines={2}>
-                        {selectedSpot.name}
-                        {fullDistanceText ? <Text style={styles.fullPanelDistance}> {fullDistanceText}</Text> : null}
-                      </Text>
-                    </View>
+                    <Text style={styles.fullPanelTitle} numberOfLines={2}>
+                      {selectedSpot.name}
+                    </Text>
+                    {fullDistanceText ? (
+                      <Text style={styles.fullSummaryDistance}>{fullDistanceText}</Text>
+                    ) : null}
 
                     <View style={styles.fullPanelAddressRow}>
                       <Text style={styles.fullPanelDistrict}>{collapsedDistrict}</Text>
                       <Text style={styles.fullPanelAddressDot}>·</Text>
-                      <Text style={styles.fullPanelAddress} numberOfLines={2}>
-                        {halfAddressDetail}
-                      </Text>
+                      <Text style={styles.fullPanelAddress} numberOfLines={2}>{halfAddressDetail}</Text>
                     </View>
 
                     <View style={styles.fullPanelTagsRow}>
                       {(halfTags.length > 0 ? halfTags : ['安静']).map((tag) => (
                         <View key={`${selectedSpot.id}-${tag}-full`} style={styles.collapsedTag}>
-                          <Text style={styles.collapsedTagText} numberOfLines={1}>
-                            {tag}
-                          </Text>
+                          <Text style={styles.collapsedTagText} numberOfLines={1}>{tag}</Text>
                         </View>
                       ))}
                     </View>
+                  </View>
 
-                    <View style={styles.fullPanelInfoActionRow}>
-                      <View style={styles.fullPanelInfoLeft}>
-                        <Text style={styles.fullPanelInfoText}>营业时间：{halfBusinessHours}</Text>
-                        <View style={styles.halfClaimRow}>
-                          <Ionicons name="checkmark-circle" size={12} color="#ED8422" />
-                          <Text style={styles.halfClaimText}>商家已认证</Text>
-                        </View>
-                      </View>
-                      <View style={styles.fullPanelInfoRight}>
-                        <View style={styles.fullPanelActionButtons}>
-                          <Pressable onPress={handleOpenNavigation} style={styles.halfActionButton}>
-                            <NavigationDefaultIcon width={25} height={25} />
-                          </Pressable>
-                          <Pressable onPress={handleShareSpotInfo} style={styles.halfActionButton}>
-                            <ShareDefaultIcon width={25} height={25} />
-                          </Pressable>
-                          <Pressable
-                            onPress={handleToggleFavoriteWithFeedback}
-                            onPressIn={handleFavoritePressIn}
-                            onPressOut={handleFavoritePressOut}
-                            style={styles.halfActionButton}>
-                            <FavoriteSuccessBurst progress={favoriteBurstProgress} />
-                            <Animated.View style={{ transform: [{ scale: favoriteButtonScale }] }}>
-                              {isSelectedSpotFavorite ? (
-                                <FavouritePressedIcon width={25} height={25} />
-                              ) : (
-                                <FavouriteDefaultIcon width={25} height={25} />
-                              )}
-                            </Animated.View>
-                          </Pressable>
-                        </View>
-                        <View style={styles.fullPanelHeatRow}>
-                          <HeatIcon width={13} height={13} />
-                          <Text style={styles.halfHeatText}>{selectedSpot.votes}</Text>
-                        </View>
-                      </View>
+                  {/* ──────── §3 Action Section ──────── */}
+                  <View style={styles.fullActionSection}>
+                    <Pressable style={styles.fullActionItem} onPress={handleOpenNavigation}>
+                      <NavigationDefaultIcon width={26} height={26} />
+                      <Text style={styles.fullActionLabel}>导航</Text>
+                    </Pressable>
+
+                    <Pressable style={styles.fullActionItem} onPress={handleShareSpotInfo}>
+                      <ShareDefaultIcon width={26} height={26} />
+                      <Text style={styles.fullActionLabel}>分享</Text>
+                    </Pressable>
+
+                    <Pressable
+                      style={styles.fullActionItem}
+                      onPress={handleToggleFavoriteWithFeedback}
+                      onPressIn={handleFavoritePressIn}
+                      onPressOut={handleFavoritePressOut}>
+                      <FavoriteSuccessBurst progress={favoriteBurstProgress} />
+                      <Animated.View style={{ transform: [{ scale: favoriteButtonScale }] }}>
+                        {isSelectedSpotFavorite ? (
+                          <FavouritePressedIcon width={26} height={26} />
+                        ) : (
+                          <FavouriteDefaultIcon width={26} height={26} />
+                        )}
+                      </Animated.View>
+                      <Text style={styles.fullActionLabel}>收藏</Text>
+                    </Pressable>
+
+                    <View style={styles.fullActionItem}>
+                      <HeatIcon width={22} height={22} />
+                      <Text style={styles.fullActionLabel}>{selectedSpot.votes} 热度</Text>
                     </View>
                   </View>
 
-                  <View style={styles.fullPanelDivider} />
-                  <View style={styles.fullPanelDescription}>
-                    <Text style={styles.fullPanelDescriptionText}>{halfDescription}</Text>
-                  </View>
-                  <View style={styles.fullPanelDivider} />
-
-                  {linkedWeeklyActivity ? (
-                    <Pressable
-                      onPress={() => handleOpenWeeklyActivity(linkedWeeklyActivity)}
-                      style={({ pressed }) => [styles.halfWeeklyCard, pressed ? styles.halfWeeklyCardPressed : null]}>
-                      {linkedWeeklyActivity.imageUri ? (
-                        <Image source={{ uri: linkedWeeklyActivity.imageUri }} style={styles.halfWeeklyCardImage} />
-                      ) : halfPhotoUris[0] ? (
-                        <Image source={{ uri: halfPhotoUris[0] }} style={styles.halfWeeklyCardImage} />
-                      ) : (
-                        <View style={[styles.halfWeeklyCardImage, styles.halfWeeklyCardImagePlaceholder]} />
-                      )}
-                      <View style={styles.halfWeeklyCardOverlay}>
-                        <View style={styles.halfWeeklyCardTextWrap}>
-                          <Text style={styles.halfWeeklyCardTitle}>{linkedWeeklyActivity.title}</Text>
-                          <Text style={styles.halfWeeklyCardSubtitle}>{linkedWeeklyActivity.summary}</Text>
-                        </View>
-                        <View style={styles.halfWeeklyCardButton}>
-                          <Text style={styles.halfWeeklyCardButtonText}>{linkedWeeklyActivity.ctaLabel}</Text>
-                        </View>
-                      </View>
-                    </Pressable>
-                  ) : null}
-
-                  <View style={styles.halfFeedbackWrap}>
-                    <Pressable onPress={handleOpenSpotFeedback} style={styles.halfFeedbackButton}>
-                      <Text style={styles.halfFeedbackButtonText}>反馈地点信息</Text>
-                    </Pressable>
-                    <Text style={styles.halfFeedbackText}>
-                      该地点由平台整理维护，欢迎反馈修正；商家认领后可支持信息更新。
-                    </Text>
+                  {/* ──────── §4 Facts Section ──────── */}
+                  <View style={styles.fullFactsSection}>
+                    <View style={styles.fullFactRow}>
+                      <Ionicons name="time-outline" size={14} color="#888888" />
+                      <Text style={styles.fullFactText}>营业时间：{halfBusinessHours}</Text>
+                    </View>
+                    <View style={styles.fullFactRow}>
+                      <Ionicons name="checkmark-circle" size={14} color="#ED8422" />
+                      <Text style={styles.fullFactText}>商家已认证</Text>
+                    </View>
                   </View>
 
+                  {/* ──────── §5 Description Section ──────── */}
+                  <View style={styles.fullDescriptionSection}>
+                    <View style={styles.fullPanelDivider} />
+                    <Text style={styles.fullDescriptionText}>{halfDescription}</Text>
+                    <View style={styles.fullPanelDivider} />
+                  </View>
+
+                  {/* ──────── §6 Related / Feedback Section ──────── */}
+                  <View style={styles.fullRelatedSection}>
+                    {linkedWeeklyActivity ? (
+                      <Pressable
+                        onPress={() => handleOpenWeeklyActivity(linkedWeeklyActivity)}
+                        style={({ pressed }) => [styles.halfWeeklyCard, pressed ? styles.halfWeeklyCardPressed : null]}>
+                        {linkedWeeklyActivity.imageUri ? (
+                          <Image source={{ uri: linkedWeeklyActivity.imageUri }} style={styles.halfWeeklyCardImage} />
+                        ) : halfPhotoUris[0] ? (
+                          <Image source={{ uri: halfPhotoUris[0] }} style={styles.halfWeeklyCardImage} />
+                        ) : (
+                          <View style={[styles.halfWeeklyCardImage, styles.halfWeeklyCardImagePlaceholder]} />
+                        )}
+                        <View style={styles.halfWeeklyCardOverlay}>
+                          <View style={styles.halfWeeklyCardTextWrap}>
+                            <Text style={styles.halfWeeklyCardTitle}>{linkedWeeklyActivity.title}</Text>
+                            <Text style={styles.halfWeeklyCardSubtitle}>{linkedWeeklyActivity.summary}</Text>
+                          </View>
+                          <View style={styles.halfWeeklyCardButton}>
+                            <Text style={styles.halfWeeklyCardButtonText}>{linkedWeeklyActivity.ctaLabel}</Text>
+                          </View>
+                        </View>
+                      </Pressable>
+                    ) : null}
+
+                    <View style={styles.fullFeedbackSection}>
+                      <Pressable onPress={handleOpenSpotFeedback} style={styles.fullFeedbackButton}>
+                        <Text style={styles.fullFeedbackButtonText}>反馈地点信息</Text>
+                      </Pressable>
+                      <Text style={styles.fullFeedbackHint}>
+                        该地点由平台整理维护，欢迎反馈修正；商家认领后可支持信息更新。
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Owner Section */}
                   {isUserOwnedSpot ? (
                     <View style={styles.ownerActionsSection}>
                       <Text style={styles.ownerActionsTitle}>我的地点管理</Text>
@@ -1921,10 +2451,12 @@ export default function TabOneScreen() {
                     </View>
                   ) : null}
 
+                  {/* Comments placeholder */}
                   <View style={styles.fullPanelDivider} />
                   <View style={styles.fullCommentsPlaceholder}>
                     <Text style={styles.fullCommentsPlaceholderText}>精选评论区（后面再做）</Text>
                   </View>
+
                 </View>
               </View>
               <View style={[styles.sheetFooterSpacer, { height: tabBarHeight + insets.bottom + 56 }]} />
@@ -1947,6 +2479,32 @@ export default function TabOneScreen() {
         onUpdateField={updateFormValue}
         onToggleTag={toggleTag}
       />
+
+      {/* ── Map Guide (Layer 3 onboarding) ──────────────────────────── */}
+      {showMapGuide ? (
+        <View style={styles.mapGuideContainer} pointerEvents="box-none">
+          <View style={styles.mapGuideCard}>
+            <View style={styles.mapGuideHeader}>
+              <Text style={styles.mapGuideTitle}>快速上手</Text>
+              <Pressable onPress={handleDismissMapGuide} style={styles.mapGuideCloseBtn}>
+                <Ionicons name="close" size={16} color="#888" />
+              </Pressable>
+            </View>
+            {(
+              [
+                { icon: 'location-outline', text: '点击地图上的标记，查看地点详情' },
+                { icon: 'chevron-up-outline', text: '上拉卡片，查看地点完整信息' },
+                { icon: 'hand-left-outline', text: '长按地图，可以添加新地点' },
+              ] as Array<{ icon: keyof typeof Ionicons.glyphMap; text: string }>
+            ).map(({ icon, text }) => (
+              <View key={text} style={styles.mapGuideTipRow}>
+                <Ionicons name={icon} size={15} color="#ED8422" />
+                <Text style={styles.mapGuideTipText}>{text}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -2093,6 +2651,30 @@ const styles = StyleSheet.create({
   },
   markerContainer: {
     alignItems: 'center',
+    // Shadow — supplements the SVG's built-in feDropShadow filter.
+    // iOS: shadowColor renders against rasterised SVG content even without backgroundColor.
+    // Android: elevation provides material shadow (SVG filter shadows unreliable on Android).
+    shadowColor: '#000000',
+    shadowOpacity: 0.16,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  markerVisualBox: {
+    width: MARKER_SELECTED_SVG_SIZE,
+    height: MARKER_SELECTED_SVG_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Absolute overlay layers inside markerVisualBox for large/small crossfade
+  markerLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   markerPin: {
     alignItems: 'center',
@@ -2144,7 +2726,29 @@ const styles = StyleSheet.create({
     bottom: 0,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    backgroundColor: '#FFFEFF',
+    // backgroundColor 由内联样式按 sheetStage 动态设置
+    // 顶部细高光描边，增强玻璃层级感
+    borderTopWidth: 1,
+    borderLeftWidth: 0,
+    borderRightWidth: 0,
+    borderBottomWidth: 0,
+    borderTopColor: 'rgba(255,255,255,0.9)',
+    // iOS shadow
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    // Android elevation
+    elevation: 12,
+  },
+  sheetGlassBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
   sheetHandleArea: {
     alignItems: 'center',
@@ -2770,7 +3374,7 @@ const styles = StyleSheet.create({
   fullPanelContent: {
     width: 342,
     alignSelf: 'center',
-    gap: 9,
+    gap: 16,
   },
   fullPanelSummaryBlock: {
     gap: 8,
@@ -2877,6 +3481,110 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     textAlign: 'center',
+  },
+  // ── Hero carousel dots ────────────────────────────────────────────────────
+  heroDotRow: {
+    position: 'absolute',
+    bottom: 10,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 5,
+    pointerEvents: 'none',
+  },
+  heroDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+  },
+  heroDotActive: {
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  // ── Full detail page — new section styles ─────────────────────────────────
+  fullSummarySection: {
+    gap: 8,
+    paddingTop: 2,
+  },
+  fullSummaryDistance: {
+    color: '#888888',
+    fontSize: 13,
+    fontWeight: '400' as const,
+    lineHeight: 17,
+    marginTop: -3,
+  },
+  fullActionSection: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    justifyContent: 'space-around' as const,
+    backgroundColor: '#F7F5F2',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+    marginVertical: 2,
+  },
+  fullActionItem: {
+    flex: 1,
+    alignItems: 'center' as const,
+    gap: 5,
+  },
+  fullActionLabel: {
+    color: '#4A4A4A',
+    fontSize: 11,
+    fontWeight: '500' as const,
+    lineHeight: 14,
+  },
+  fullFactsSection: {
+    gap: 9,
+    paddingVertical: 4,
+  },
+  fullFactRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 6,
+  },
+  fullFactText: {
+    color: '#5A5A5A',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  fullDescriptionSection: {
+    gap: 12,
+    paddingVertical: 4,
+  },
+  fullDescriptionText: {
+    color: '#5E5E5E',
+    fontSize: 13,
+    lineHeight: 21,
+  },
+  fullRelatedSection: {
+    gap: 12,
+  },
+  fullFeedbackSection: {
+    gap: 8,
+  },
+  fullFeedbackButton: {
+    alignSelf: 'flex-start' as const,
+    paddingVertical: 7,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: '#F0EDE9',
+  },
+  fullFeedbackButtonText: {
+    color: '#3C3C3C',
+    fontSize: 13,
+    fontWeight: '600' as const,
+    lineHeight: 17,
+  },
+  fullFeedbackHint: {
+    color: '#8A8A8A',
+    fontSize: 11,
+    lineHeight: 16,
   },
   stageSkeletonCard: {
     borderRadius: 14,
@@ -3070,5 +3778,61 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: theme.colors.textPrimary,
+  },
+
+  // ── Map Guide overlay ────────────────────────────────────────────
+  mapGuideContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingBottom: 180,
+    zIndex: 90,
+  },
+  mapGuideCard: {
+    width: 300,
+    borderRadius: 16,
+    backgroundColor: '#FFFEFF',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  mapGuideHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  mapGuideTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#ED8422',
+    letterSpacing: 0.3,
+  },
+  mapGuideCloseBtn: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mapGuideTipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 4,
+  },
+  mapGuideTipText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#404040',
   },
 });

@@ -1,183 +1,157 @@
-import { Stack, router } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { useRef } from 'react';
+import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { SectionHeader } from '@/components/ui';
-import { theme } from '@/constants/theme';
+import MessageSquareIcon from '@/assets/icons/message-square.svg';
+import DogHero from '@/assets/illustrations/dog-hero.svg';
 import { usePetMapStore } from '@/store/petmap-store';
 
-type MeActionItem = {
-  key: string;
-  label: string;
-  onPress: () => void;
-  isPlaceholder?: boolean;
-};
-
-type MySpotsStatusFilter = 'all' | 'other' | 'pending' | 'published';
-
 export default function MeScreen() {
-  const { favoriteSpots, hasUnreadInboxItems, userSpots } = usePetMapStore();
-  const pendingSpotsCount = userSpots.filter((spot) => spot.submissionStatus === 'pending_review').length;
-  const publishedSpotsCount = userSpots.filter((spot) => spot.verified).length;
-  const draftSpotsCount = userSpots.filter(
-    (spot) => spot.submissionStatus !== 'pending_review' && !spot.verified
-  ).length;
-  const nextStepText =
-    draftSpotsCount > 0
-      ? `你有 ${draftSpotsCount} 个地点待提交，可以继续完善后发起审核。`
-        : pendingSpotsCount > 0
-          ? `你有 ${pendingSpotsCount} 个地点正在审核中，先去看看是否还需补充信息。`
-        : userSpots.length > 0
-          ? '你的地点内容已比较完整，可以继续补充照片和说明。'
-          : '从地图长按添加你的第一个宠物友好地点，开始积累内容资产。';
+  const insets = useSafeAreaInsets();
+  const { userSpots, favoriteSpots } = usePetMapStore();
 
-  function openMySpots(status: MySpotsStatusFilter) {
-    router.push({
-      pathname: '/my-spots',
-      params: { status },
-    });
+  const heroHeight = insets.top + 180;
+  const messageButtonTop = insets.top + 10;
+
+  // Press animations for the two stat cards
+  const spotsAnim = useRef(new Animated.Value(0)).current;
+  const favAnim   = useRef(new Animated.Value(0)).current;
+
+  function pressIn(anim: Animated.Value) {
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 80,
+      useNativeDriver: true,
+    }).start();
   }
 
-  function handleNextStepPress() {
-    if (draftSpotsCount > 0) {
-      openMySpots('other');
-      return;
-    }
-
-    if (pendingSpotsCount > 0) {
-      openMySpots('pending');
-      return;
-    }
-
-    if (userSpots.length > 0) {
-      openMySpots('all');
-      return;
-    }
-
-    router.navigate('/(tabs)');
+  function pressOut(anim: Animated.Value) {
+    Animated.spring(anim, {
+      toValue: 0,
+      useNativeDriver: true,
+      speed: 22,
+      bounciness: 6,
+    }).start();
   }
 
-  const actionItems: MeActionItem[] = [
-    {
-      key: 'badges',
-      label: '我的勋章',
-      onPress: () => router.push('/badges'),
-    },
-    {
-      key: 'settings',
-      label: '设置',
-      onPress: () => router.push('/settings'),
-    },
-    {
-      key: 'feedback',
-      label: '意见反馈',
-      onPress: () => router.push('/feedback'),
-    },
-    {
-      key: 'about',
-      label: '关于 PetMap',
-      onPress: () => router.push('/about'),
-    },
-  ];
+  function getStatCardStyle(anim: Animated.Value) {
+    return {
+      transform: [
+        {
+          scale: anim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [1, 0.965],
+            extrapolate: 'clamp',
+          }),
+        },
+        {
+          translateY: anim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, 1.5],
+            extrapolate: 'clamp',
+          }),
+        },
+      ],
+    };
+  }
 
   return (
     <View style={styles.container}>
-      <Stack.Screen
-        options={{
-          headerRight: () => (
-            <Pressable
-              onPress={() => router.push('/inbox')}
-              style={({ pressed }) => [styles.inboxButton, pressed ? styles.inboxButtonPressed : null]}>
-              <SymbolView
-                name={{ ios: 'bubble.left.and.bubble.right', android: 'chat', web: 'chat' }}
-                tintColor={theme.colors.textPrimary}
-                size={18}
-              />
-              {hasUnreadInboxItems ? <View style={styles.inboxDot} /> : null}
-            </Pressable>
-          ),
-        }}
-      />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <SectionHeader
-          eyebrow="个人页"
-          title="Me"
-          subtitle="记录你的宠物友好生活地图"
-          style={styles.pageHeader}
-        />
+      {/*
+        白色背景层：从 hero 底部延伸到屏幕底部。
+        ScrollView 透明，底部 overscroll 看到这层白色；
+        顶部 overscroll 穿透到 container 的橙色。
+      */}
+      <View style={[styles.bottomWhiteBg, { top: heroHeight }]} />
 
-        <View style={styles.profileCard}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>🐾</Text>
+      <ScrollView
+        alwaysBounceVertical
+        showsVerticalScrollIndicator={false}
+        style={styles.scrollView}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 108 }]}>
+
+        {/* Hero */}
+        <View style={[styles.hero, { height: heroHeight }]}>
+          <Pressable
+            onPress={() => router.push('/inbox')}
+            style={[styles.messageButton, { top: messageButtonTop }]}>
+            <MessageSquareIcon width={18} height={18} />
+          </Pressable>
+
+          <View style={styles.heroTitleGroup}>
+            <Text style={styles.heroEyebrow}>本周巡逻</Text>
+            <Text style={styles.heroTitle}>Weiless</Text>
           </View>
-          <View style={styles.profileMeta}>
-            <Text style={styles.profileName}>PetMap 用户</Text>
-            <Text style={styles.profileSubtitle}>记录你的宠物友好生活地图</Text>
-          </View>
+
+          <DogHero width={130} height={170} style={styles.heroDog} />
         </View>
 
-        <View style={styles.statsRow}>
-          <Pressable
-            style={({ pressed }) => [styles.statCard, pressed ? styles.statCardPressed : null]}
-            onPress={() => openMySpots('all')}>
-            <Text style={styles.statValue}>{userSpots.length}</Text>
-            <Text style={styles.statLabel}>我的地点</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [styles.statCard, pressed ? styles.statCardPressed : null]}
-            onPress={() => router.push('/my-favorites')}>
-            <Text style={styles.statValue}>{favoriteSpots.length}</Text>
-            <Text style={styles.statLabel}>我的收藏</Text>
-          </Pressable>
-        </View>
+        {/* White Content Sheet */}
+        <View style={styles.contentSheet}>
+          <View style={styles.sheetContent}>
 
-        <View style={styles.statsRow}>
-          <Pressable
-            style={({ pressed }) => [styles.statCard, pressed ? styles.statCardPressed : null]}
-            onPress={() => openMySpots('pending')}>
-            <Text style={styles.statValue}>{pendingSpotsCount}</Text>
-            <Text style={styles.statLabel}>审核中</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [styles.statCard, pressed ? styles.statCardPressed : null]}
-            onPress={() => openMySpots('published')}>
-            <Text style={styles.statValue}>{publishedSpotsCount}</Text>
-            <Text style={styles.statLabel}>已发布</Text>
-          </Pressable>
-        </View>
+            {/* User Profile Block */}
+            <View style={styles.profileBlock}>
+              <View style={styles.avatar} />
+              <View style={styles.userInfo}>
+                <Text style={styles.userId}>Tino</Text>
+                <Text style={styles.userSubtitle}>属于你和爱宠的专属地图</Text>
+              </View>
+            </View>
 
-        <Pressable
-          onPress={handleNextStepPress}
-          style={({ pressed }) => [styles.sectionCard, pressed ? styles.sectionCardPressed : null]}>
-          <Text style={styles.sectionEyebrow}>下一步</Text>
-          <Text style={styles.sectionTitle}>内容提醒</Text>
-          <Text style={styles.sectionDescription}>{nextStepText}</Text>
-          <Text style={styles.sectionActionHint}>
-            {draftSpotsCount > 0 || pendingSpotsCount > 0 || userSpots.length > 0 ? '去处理' : '去添加地点'}
-          </Text>
-        </Pressable>
-
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionEyebrow}>快捷入口</Text>
-          <Text style={styles.sectionTitle}>功能入口</Text>
-          <View style={styles.actionList}>
-            {actionItems.map((item) => (
-              <Pressable key={item.key} style={styles.actionItem} onPress={item.onPress}>
-                <Text style={styles.actionLabel}>{item.label}</Text>
-                <Text style={[styles.actionHint, item.isPlaceholder ? styles.placeholderHint : null]}>
-                  {item.isPlaceholder ? '即将上线' : '进入'}
-                </Text>
+            {/* Stats Section */}
+            <View style={styles.statsSection}>
+              <Pressable
+                onPressIn={() => pressIn(spotsAnim)}
+                onPressOut={() => pressOut(spotsAnim)}
+                onPress={() => router.push('/my-spots')}>
+                <Animated.View style={[styles.statBlock, getStatCardStyle(spotsAnim)]}>
+                  <Text style={styles.statNumber}>{userSpots.length}</Text>
+                  <Text style={styles.statLabel}>我的地点</Text>
+                </Animated.View>
               </Pressable>
-            ))}
-          </View>
-        </View>
+              <Pressable
+                onPressIn={() => pressIn(favAnim)}
+                onPressOut={() => pressOut(favAnim)}
+                onPress={() => router.push('/my-favorites')}>
+                <Animated.View style={[styles.statBlock, getStatCardStyle(favAnim)]}>
+                  <Text style={styles.statNumber}>{favoriteSpots.length}</Text>
+                  <Text style={styles.statLabel}>我的收藏</Text>
+                </Animated.View>
+              </Pressable>
+            </View>
 
-        <View style={styles.mascotCard}>
-          <Text style={styles.mascotEyebrow}>本周值班吉祥物</Text>
-          <Text style={styles.mascotTitle}>🐶 巡逻狗狗</Text>
-          <Text style={styles.mascotDescription}>
-            本周由「巡逻狗狗」陪你探索城市宠物友好地点
-          </Text>
+            {/* Achievement Section */}
+            <View style={styles.achievementSection}>
+              <View style={styles.achievementHeader}>
+                <Text style={styles.achievementTitle}>勋章</Text>
+                <Ionicons name="chevron-forward" size={13} color="#404040" />
+              </View>
+              <View style={styles.badgeRow}>
+                {[0, 1, 2, 3].map((i) => (
+                  <View key={i} style={styles.badgePlaceholder} />
+                ))}
+              </View>
+            </View>
+
+            {/* Function Section */}
+            <View style={styles.functionSection}>
+              <Text style={styles.functionTitle}>快捷入口</Text>
+              {[
+                { key: 'settings', label: '设置', onPress: () => router.push('/settings') },
+                { key: 'feedback', label: '意见反馈', onPress: () => router.push('/report/location') },
+                { key: 'about', label: '关于 PetMap', onPress: () => router.push('/about') },
+              ].map((item) => (
+                <Pressable key={item.key} style={styles.functionItem} onPress={item.onPress}>
+                  <Text style={styles.functionItemLabel}>{item.label}</Text>
+                  <Ionicons name="chevron-forward" size={13} color="#404040" />
+                </Pressable>
+              ))}
+            </View>
+
+          </View>
         </View>
       </ScrollView>
     </View>
@@ -185,184 +159,206 @@ export default function MeScreen() {
 }
 
 const styles = StyleSheet.create({
+  // 橙色底层：顶部 overscroll 时透过透明 scrollView 露出此颜色
   container: {
     flex: 1,
-    backgroundColor: theme.colors.pageBackground,
+    backgroundColor: '#ED8422',
   },
-  content: {
-    padding: theme.spacing.lg,
-    paddingBottom: theme.spacing.xl + theme.spacing.sm,
-    gap: theme.spacing.md,
+  // 白色层：从 heroHeight 到底部，底部 overscroll 时露出此颜色
+  bottomWhiteBg: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#FFFEFF',
   },
-  pageHeader: {
-    marginBottom: 0,
+  // 透明，让两端 overscroll 分别看到对应底层颜色
+  scrollView: {
+    flex: 1,
+    backgroundColor: 'transparent',
   },
-  inboxButton: {
-    width: 36,
-    height: 36,
-    borderRadius: theme.radii.pill,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.cardBackground,
+  scrollContent: {
+    flexGrow: 1,
+  },
+
+  // ── Hero ──────────────────────────────────────────────────
+  hero: {
+    position: 'relative',
+    backgroundColor: '#ED8422',
+    overflow: 'visible',
+  },
+  messageButton: {
+    position: 'absolute',
+    right: 16,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 4,
+    zIndex: 3,
   },
-  inboxButtonPressed: {
-    opacity: 0.86,
-  },
-  inboxDot: {
+  heroTitleGroup: {
     position: 'absolute',
-    top: 7,
-    right: 7,
-    width: 8,
-    height: 8,
-    borderRadius: theme.radii.pill,
-    backgroundColor: theme.colors.primary,
+    left: 27,
+    bottom: 12,
+    zIndex: 2,
   },
-  profileCard: {
+  heroEyebrow: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 22,
+  },
+  heroTitle: {
+    color: '#FFFFFF',
+    fontSize: 32,
+    fontWeight: '700',
+    lineHeight: 40,
+  },
+  heroDog: {
+    position: 'absolute',
+    right: 58,
+    bottom: -30,
+    zIndex: 0,
+  },
+
+  // ── White Sheet ───────────────────────────────────────────
+  contentSheet: {
+    flex: 1,
+    minHeight: 560,
+    backgroundColor: '#FFFEFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    zIndex: 2,
+    paddingTop: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 89,
+  },
+  sheetContent: {
+    gap: 17,
+  },
+
+  // ── User Profile Block ────────────────────────────────────
+  profileBlock: {
+    height: 91,
+    borderRadius: 20,
+    borderWidth: 4,
+    borderColor: '#ED8422',
+    backgroundColor: '#FFFEFF',
+    paddingTop: 10,
+    paddingBottom: 9,
+    paddingLeft: 12,
+    paddingRight: 77,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: theme.spacing.sm,
-    borderRadius: theme.radii.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.cardBackground,
-    padding: theme.spacing.md,
-    ...theme.shadows.card,
+    gap: 12,
   },
   avatar: {
-    width: 58,
-    height: 58,
-    borderRadius: theme.radii.pill,
-    backgroundColor: theme.colors.primarySoft,
-    alignItems: 'center',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#D9D9D9',
+    flexShrink: 0,
+  },
+  userInfo: {
+    gap: 5,
+  },
+  userId: {
+    color: '#404040',
+    fontSize: 20,
+    fontWeight: '700',
+    lineHeight: 28,
+  },
+  userSubtitle: {
+    color: '#404040',
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 16,
+  },
+
+  // ── Stats Section ─────────────────────────────────────────
+  statsSection: {
+    flexDirection: 'row',
+    gap: 14,
     justifyContent: 'center',
   },
-  avatarText: {
-    fontSize: 26,
-  },
-  profileMeta: {
-    flex: 1,
-  },
-  profileName: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: theme.colors.textPrimary,
-  },
-  profileSubtitle: {
-    marginTop: 4,
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    gap: theme.spacing.xs,
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.cardBackground,
-    paddingVertical: 14,
-    paddingHorizontal: 10,
+  statBlock: {
+    width: 150,
+    height: 75,
+    borderRadius: 20,
+    borderWidth: 4,
+    borderColor: '#ED8422',
+    backgroundColor: '#FFFEFF',
     alignItems: 'center',
-    ...theme.shadows.card,
+    justifyContent: 'center',
+    gap: 4,
+    // Subtle shadow — complements the press-down animation
+    shadowColor: '#ED8422',
+    shadowOpacity: 0.22,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 6,
+    elevation: 3,
   },
-  statCardPressed: {
-    opacity: 0.88,
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: theme.colors.textPrimary,
+  statNumber: {
+    color: '#404040',
+    fontSize: 30,
+    fontWeight: '700',
+    lineHeight: 36,
   },
   statLabel: {
-    marginTop: 4,
+    color: '#404040',
     fontSize: 12,
-    color: theme.colors.textSecondary,
+    fontWeight: '400',
+    lineHeight: 16,
   },
-  sectionCard: {
-    borderRadius: theme.radii.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.cardBackground,
-    padding: theme.spacing.md,
-    ...theme.shadows.card,
+
+  // ── Achievement Section ───────────────────────────────────
+  achievementSection: {
+    gap: 8,
   },
-  sectionCardPressed: {
-    opacity: 0.88,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: theme.colors.textPrimary,
-  },
-  sectionEyebrow: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.primary,
-    marginBottom: 6,
-  },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 13,
-    lineHeight: 19,
-    color: theme.colors.textSecondary,
-  },
-  sectionActionHint: {
-    marginTop: theme.spacing.sm,
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.primary,
-  },
-  actionList: {
-    marginTop: theme.spacing.sm,
-  },
-  actionItem: {
+  achievementHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.divider,
   },
-  actionLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: theme.colors.textPrimary,
-  },
-  actionHint: {
-    fontSize: 13,
-    color: theme.colors.primary,
-    fontWeight: '600',
-  },
-  placeholderHint: {
-    color: theme.colors.textSecondary,
-  },
-  mascotCard: {
-    borderRadius: theme.radii.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.accentSoft,
-    padding: theme.spacing.md,
-  },
-  mascotEyebrow: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.accent,
-  },
-  mascotTitle: {
-    marginTop: 6,
-    fontSize: 20,
-    fontWeight: '800',
-    color: theme.colors.textPrimary,
-  },
-  mascotDescription: {
-    marginTop: 8,
+  achievementTitle: {
+    color: '#404040',
     fontSize: 14,
-    lineHeight: 20,
-    color: theme.colors.textSecondary,
+    fontWeight: '700',
+    lineHeight: 22,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  badgePlaceholder: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#D9D9D9',
+  },
+
+  // ── Function Section ──────────────────────────────────────
+  functionSection: {
+    gap: 14,
+  },
+  functionTitle: {
+    color: '#404040',
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 22,
+  },
+  functionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 22,
+  },
+  functionItemLabel: {
+    color: '#404040',
+    fontSize: 16,
+    fontWeight: '700',
+    lineHeight: 22,
   },
 });

@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import MessageSquareIcon from '@/assets/icons/message-square.svg';
 import DogHero from '@/assets/illustrations/dog-hero.svg';
 import { ACTIVITY_COLLECTIONS, type ActivityCollection } from '@/constants/activityCollections';
 import { usePetMapStore } from '@/store/petmap-store';
@@ -101,14 +102,22 @@ export default function ServicesScreen() {
 
   return (
     <View style={styles.container}>
+      {/*
+        白色背景层：从 hero 底部延伸到屏幕底部。
+        底部 overscroll 时露出白色；顶部 overscroll 穿透到 container 橙色。
+      */}
+      <View style={[styles.bottomWhiteBg, { top: heroHeight }]} />
+
       <ScrollView
         alwaysBounceVertical
         showsVerticalScrollIndicator={false}
+        decelerationRate="normal"
+        scrollEventThrottle={16}
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 108 }]}>
         <View style={[styles.hero, { height: heroHeight }]}>
           <Pressable onPress={handleOpenInbox} style={[styles.messageButton, { top: messageButtonTop }]}>
-            <Ionicons name="chatbubble-ellipses-outline" size={16} color="#FFFFFF" />
+            <MessageSquareIcon width={18} height={18} />
             {hasUnreadInboxItems ? <View style={styles.messageBadge} /> : null}
           </Pressable>
 
@@ -125,6 +134,8 @@ export default function ServicesScreen() {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
+              decelerationRate="normal"
+              scrollEventThrottle={16}
               style={styles.featuredScroll}
               contentContainerStyle={styles.featuredRow}>
               {featuredActivities.map((activity) => renderFeaturedCard(activity))}
@@ -140,6 +151,8 @@ export default function ServicesScreen() {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
+              decelerationRate="normal"
+              scrollEventThrottle={16}
               contentContainerStyle={styles.todayRow}>
               {todayPicks.map((spot) => renderTodayCard(spot))}
             </ScrollView>
@@ -155,9 +168,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#ED8422',
   },
+  bottomWhiteBg: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#FFFEFF',
+  },
   scrollView: {
     flex: 1,
-    backgroundColor: '#ED8422',
+    backgroundColor: 'transparent',
   },
   scrollContent: {
     flexGrow: 1,
@@ -349,6 +369,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cardPressed: {
-    opacity: 0.92,
+    opacity: 0.88,
   },
 });

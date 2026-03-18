@@ -1,86 +1,91 @@
-import { Stack } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router, Stack } from 'expo-router';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { SectionHeader, TagChip } from '@/components/ui';
-import { theme } from '@/constants/theme';
+import DogHero from '@/assets/illustrations/dog-hero.svg';
 
-const CONTENT_SOURCES = ['平台整理地点', '用户添加地点', '活动专题与精选'] as const;
-const FUTURE_DIRECTIONS = ['更完整的活动内容', '更完整的商家能力', '更完整的同步与审核体系'] as const;
+function BackArrowIcon() {
+  return (
+    <Svg width={8} height={16} viewBox="0 0 11 19" fill="none">
+      <Path
+        d="M9.5 17.5L1.5 9.5L9.5 1.5"
+        stroke="#FFFFFF"
+        strokeWidth={3}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+// ── Screen ───────────────────────────────────────────────────────────────────
 
 export default function AboutScreen() {
+  const insets = useSafeAreaInsets();
+
   return (
     <View style={styles.container}>
-      <Stack.Screen options={{ title: '关于 PetMap' }} />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <SectionHeader
-          eyebrow="产品说明"
-          title="关于 PetMap"
-          subtitle="PetMap 正在把宠物友好地点发现、内容整理和轻量活动入口，慢慢连成一条更可信的生活地图。"
-          style={styles.header}
-        />
+      <Stack.Screen options={{ headerShown: false }} />
 
+      {/* ── Orange Header ────────────────────────────────────────────── */}
+      <SafeAreaView edges={['top']} style={styles.header}>
+        <View style={styles.headerRow}>
+          <Pressable
+            onPress={() => router.back()}
+            style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}>
+            <BackArrowIcon />
+          </Pressable>
+          <Text style={styles.headerTitle}>关于 PetMap</Text>
+          <View style={styles.backButtonPlaceholder} />
+        </View>
+      </SafeAreaView>
+
+      {/* ── Body ─────────────────────────────────────────────────────── */}
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 48 }]}
+        showsVerticalScrollIndicator={false}>
+
+        {/* ── Hero Section ─────────────────────────────────────────── */}
+        <View style={styles.heroSection}>
+          <DogHero width={120} height={156} />
+          <Text style={styles.heroAppName}>PetMap</Text>
+          <Text style={styles.heroTagline}>属于你和爱宠的专属地图</Text>
+        </View>
+
+        {/* ── Intro Card ───────────────────────────────────────────── */}
         <View style={styles.card}>
           <Text style={styles.cardEyebrow}>PetMap 是什么</Text>
-          <Text style={styles.cardTitle}>一个宠物友好地点发现工具</Text>
           <Text style={styles.cardText}>
-            PetMap 主要帮助你发现城市中的宠物友好地点。它不以强社交为核心，而是更关注地点发现、筛选、收藏、地点管理，以及活动内容入口的逐步建立。
+            PetMap 希望帮助宠物主人更轻松地发现适合携宠出行、散步、休息和探索的地点。
           </Text>
-          <View style={styles.chipRow}>
-            <TagChip label="发现" compact />
-            <TagChip label="筛选" compact />
-            <TagChip label="收藏" compact />
-            <TagChip label="地点管理" compact />
+          <Text style={[styles.cardText, styles.cardTextSpaced]}>
+            你可以在这里收藏地点、提交地点、分享发现，也可以帮助我们一起完善地图信息。
+          </Text>
+        </View>
+
+        {/* ── Version Card ─────────────────────────────────────────── */}
+        <View style={styles.infoCard}>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>当前版本</Text>
+            <Text style={styles.infoValue}>PetMap v1.0 Beta</Text>
           </View>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardEyebrow}>当前产品阶段</Text>
-          <Text style={styles.cardTitle}>先把前台主流程做顺</Text>
-          <Text style={styles.cardText}>
-            当前 PetMap 仍以本地优先为主，先把地图、探索、收藏、地点管理和活动浏览这些用户可感知主流程打磨清楚。云端能力和更完整的内容体系还在逐步接入中。
-          </Text>
-          <View style={styles.infoBlock}>
-            <Text style={styles.infoTitle}>当前状态</Text>
-            <Text style={styles.infoText}>更偏向一个可用、可信的前台产品雏形，而不是已经全部接通的完整平台。</Text>
+        {/* ── Contact Card ─────────────────────────────────────────── */}
+        <View style={styles.infoCard}>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>官方联系方式</Text>
+            <Text style={styles.infoValueMuted}>即将上线</Text>
           </View>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardEyebrow}>内容构成与来源</Text>
-          <Text style={styles.cardTitle}>不同内容会一起组成这张生活地图</Text>
-          <Text style={styles.cardText}>
-            现在你在 PetMap 里看到的内容，既包括平台持续整理的地点，也包括用户补充和提交的地点内容，同时还有围绕宠物友好主题整理的活动专题与精选内容。它们会一起服务“发现和判断”这件事。
-          </Text>
-          <View style={styles.sourceList}>
-            {CONTENT_SOURCES.map((item) => (
-              <View key={item} style={styles.sourceItem}>
-                <Text style={styles.sourceDot}>•</Text>
-                <Text style={styles.sourceText}>{item}</Text>
-              </View>
-            ))}
-          </View>
+        {/* ── Footer ───────────────────────────────────────────────── */}
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>和巡逻狗狗一起，把爱宠地图一点点补完整。</Text>
         </View>
 
-        <View style={styles.brandCard}>
-          <Text style={styles.brandEyebrow}>品牌与未来方向</Text>
-          <Text style={styles.brandTitle}>轮值吉祥物狗狗，会是 PetMap 的温和识别符号之一</Text>
-          <Text style={styles.brandText}>
-            我们希望 PetMap 不只是一个功能集合，也能慢慢长出自己的识别感。未来会有不同主题的轮值吉祥物狗狗，作为产品气质的一部分，陪用户一起探索城市里的宠物友好生活。
-          </Text>
-          <View style={styles.futureList}>
-            {FUTURE_DIRECTIONS.map((item) => (
-              <View key={item} style={styles.futureItem}>
-                <Text style={styles.futureDot}>•</Text>
-                <Text style={styles.futureText}>{item}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.versionCard}>
-          <Text style={styles.versionLabel}>当前版本</Text>
-          <Text style={styles.versionValue}>v0.x</Text>
-        </View>
       </ScrollView>
     </View>
   );
@@ -89,150 +94,141 @@ export default function AboutScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.pageBackground,
+    backgroundColor: '#FFFEFF',
   },
-  content: {
-    padding: theme.spacing.lg,
-    paddingBottom: theme.spacing.xl + theme.spacing.sm,
-    gap: theme.spacing.md,
-  },
+
+  // ── Header ────────────────────────────────────────────────────────
   header: {
-    marginBottom: 0,
+    backgroundColor: '#ED8422',
   },
+  headerRow: {
+    height: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  backButton: {
+    width: 30,
+    height: 30,
+    padding: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backButtonPressed: {
+    opacity: 0.76,
+    transform: [{ scale: 0.94 }],
+  },
+  backButtonPlaceholder: {
+    width: 30,
+    height: 30,
+  },
+  headerTitle: {
+    flex: 1,
+    textAlign: 'center',
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+
+  // ── Scroll ────────────────────────────────────────────────────────
+  scrollView: {
+    flex: 1,
+    backgroundColor: '#F5F3EF',
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 0,
+    gap: 12,
+  },
+
+  // ── Hero Section ──────────────────────────────────────────────────
+  heroSection: {
+    alignItems: 'center',
+    backgroundColor: '#ED8422',
+    paddingTop: 28,
+    paddingBottom: 36,
+    marginHorizontal: -16,
+    marginBottom: 4,
+    gap: 6,
+  },
+  heroAppName: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+    marginTop: 8,
+  },
+  heroTagline: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: 'rgba(255,255,255,0.88)',
+    lineHeight: 20,
+  },
+
+  // ── Card ──────────────────────────────────────────────────────────
   card: {
-    borderRadius: theme.radii.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.cardBackground,
-    padding: theme.spacing.md,
-    ...theme.shadows.card,
+    borderRadius: 16,
+    backgroundColor: '#FFFEFF',
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    gap: 0,
   },
   cardEyebrow: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
-    color: theme.colors.primary,
-  },
-  cardTitle: {
-    marginTop: 6,
-    fontSize: 17,
-    fontWeight: '800',
-    color: theme.colors.textPrimary,
+    color: '#ED8422',
+    letterSpacing: 0.4,
+    marginBottom: 10,
   },
   cardText: {
-    marginTop: theme.spacing.xs,
-    fontSize: 13,
-    lineHeight: 19,
-    color: theme.colors.textSecondary,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.xs,
-    marginTop: theme.spacing.sm,
-  },
-  infoBlock: {
-    marginTop: theme.spacing.sm,
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surfaceMuted,
-    padding: theme.spacing.sm,
-    gap: 4,
-  },
-  infoTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: theme.colors.textPrimary,
-  },
-  infoText: {
-    fontSize: 12,
-    lineHeight: 18,
-    color: theme.colors.textSecondary,
-  },
-  sourceList: {
-    marginTop: theme.spacing.sm,
-    gap: 8,
-  },
-  sourceItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  sourceDot: {
     fontSize: 14,
-    lineHeight: 18,
-    color: theme.colors.primary,
+    lineHeight: 22,
+    color: '#404040',
   },
-  sourceText: {
-    flex: 1,
-    fontSize: 13,
-    lineHeight: 19,
-    color: theme.colors.textSecondary,
+  cardTextSpaced: {
+    marginTop: 8,
   },
-  brandCard: {
-    borderRadius: theme.radii.lg,
-    borderWidth: 1,
-    borderColor: '#D7E5FF',
-    backgroundColor: theme.colors.primarySoft,
-    padding: theme.spacing.md,
-    ...theme.shadows.card,
+
+  // ── Info Card ─────────────────────────────────────────────────────
+  infoCard: {
+    borderRadius: 16,
+    backgroundColor: '#FFFEFF',
+    paddingHorizontal: 16,
+    paddingVertical: 4,
   },
-  brandEyebrow: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.primary,
-  },
-  brandTitle: {
-    marginTop: 6,
-    fontSize: 17,
-    lineHeight: 24,
-    fontWeight: '800',
-    color: theme.colors.textPrimary,
-  },
-  brandText: {
-    marginTop: theme.spacing.xs,
-    fontSize: 13,
-    lineHeight: 19,
-    color: theme.colors.textSecondary,
-  },
-  futureList: {
-    marginTop: theme.spacing.sm,
-    gap: 8,
-  },
-  futureItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  futureDot: {
-    fontSize: 14,
-    lineHeight: 18,
-    color: theme.colors.primary,
-  },
-  futureText: {
-    flex: 1,
-    fontSize: 13,
-    lineHeight: 19,
-    color: theme.colors.textSecondary,
-  },
-  versionCard: {
-    borderRadius: theme.radii.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surfaceMuted,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: 14,
+  infoRow: {
+    minHeight: 52,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  versionLabel: {
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-  },
-  versionValue: {
+  infoLabel: {
     fontSize: 15,
-    fontWeight: '700',
-    color: theme.colors.textPrimary,
+    fontWeight: '500',
+    color: '#303030',
+  },
+  infoValue: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#303030',
+  },
+  infoValueMuted: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: '#B0ABA4',
+  },
+
+  // ── Footer ────────────────────────────────────────────────────────
+  footer: {
+    paddingHorizontal: 4,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  footerText: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: '#B0ABA4',
+    textAlign: 'center',
   },
 });

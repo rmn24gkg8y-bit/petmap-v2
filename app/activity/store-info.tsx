@@ -25,6 +25,12 @@ export default function ServiceStoreInfoScreen() {
     <View style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
 
+      {/*
+        白色背景层：从 hero 底部延伸到屏幕底部。
+        底部 overscroll 时露出白色；顶部 overscroll 穿透到 container 橙色。
+      */}
+      <View style={[styles.bottomWhiteBg, { top: heroHeight }]} />
+
       <ScrollView
         style={styles.scrollView}
         alwaysBounceVertical
@@ -32,7 +38,7 @@ export default function ServiceStoreInfoScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 108 }]}>
         <View style={[styles.hero, { height: heroHeight }]}>
           <SafeAreaView edges={['top']} style={styles.safeTopRow}>
-            <Pressable onPress={() => router.back()} style={styles.backButton}>
+            <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}>
               <BackArrowIcon />
             </Pressable>
             <Text style={styles.pageTitle}>活动详情</Text>
@@ -62,9 +68,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#ED8422',
   },
+  bottomWhiteBg: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#FFFEFF',
+  },
   scrollView: {
     flex: 1,
-    backgroundColor: '#ED8422',
+    backgroundColor: 'transparent',
   },
   scrollContent: {
     flexGrow: 1,
@@ -90,6 +103,10 @@ const styles = StyleSheet.create({
     padding: 10,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  backButtonPressed: {
+    opacity: 0.76,
+    transform: [{ scale: 0.94 }],
   },
   backButtonPlaceholder: {
     width: 30,
