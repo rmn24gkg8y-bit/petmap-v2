@@ -1,0 +1,14 @@
+[functions.admin-publish-spot]
+verify_jwt = false
+
+[functions.admin-update-spot]
+verify_jwt = false
+
+[functions.admin-delete-spot]
+verify_jwt = false
+
+[functions.admin-upload-spot-cover]
+verify_jwt = false
+
+[functions.admin-update-spot-photos]
+verify_jwt = false

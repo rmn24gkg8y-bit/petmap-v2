@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useMemo } from 'react';
 import {
@@ -21,7 +22,6 @@ function getFeaturedActivities(activities: ActivityCollection[]) {
   if (activities.length >= 2) {
     return activities;
   }
-
   return [...activities, ...activities].slice(0, 2);
 }
 
@@ -32,7 +32,7 @@ export default function ServicesScreen() {
   const featuredActivities = useMemo(() => getFeaturedActivities(ACTIVITY_COLLECTIONS), []);
   const todayPicks = useMemo(
     () => [...spots].sort((a, b) => b.votes - a.votes).slice(0, Math.max(1, Math.min(spots.length, 4))),
-    [spots]
+    [spots],
   );
 
   const messageButtonTop = insets.top + 10;
@@ -60,10 +60,7 @@ export default function ServicesScreen() {
       <Pressable
         key={activity.key}
         onPress={() => handleOpenActivity(activity)}
-        style={({ pressed }) => [
-          styles.featuredCard,
-          pressed ? styles.cardPressed : null,
-        ]}>
+        style={({ pressed }) => [styles.featuredCard, pressed && styles.cardPressed]}>
         {activity.imageUri ? (
           <Image source={{ uri: activity.imageUri }} style={styles.featuredCardImage} />
         ) : (
@@ -71,7 +68,7 @@ export default function ServicesScreen() {
             <View style={styles.featuredCardGlowLarge} />
             <View style={styles.featuredCardGlowSmall} />
             <View style={styles.featuredCardIconWrap}>
-              <Ionicons name="calendar-outline" size={22} color="#5B5B5B" />
+              <Ionicons name="calendar-outline" size={22} color="#B07840" />
             </View>
           </View>
         )}
@@ -84,7 +81,7 @@ export default function ServicesScreen() {
       <Pressable
         key={spot.id}
         onPress={() => handleOpenSpotOnMap(spot.id)}
-        style={({ pressed }) => [styles.todayCard, pressed ? styles.cardPressed : null]}>
+        style={({ pressed }) => [styles.todayCard, pressed && styles.cardPressed]}>
         {spot.photoUris?.[0] ? (
           <Image source={{ uri: spot.photoUris[0] }} style={styles.todayCardImage} />
         ) : (
@@ -92,7 +89,7 @@ export default function ServicesScreen() {
             <View style={styles.todayCardGlowLarge} />
             <View style={styles.todayCardGlowSmall} />
             <View style={styles.todayCardIconWrap}>
-              <Ionicons name="paw-outline" size={28} color="#6A6A6A" />
+              <Ionicons name="paw-outline" size={26} color="#B07840" />
             </View>
           </View>
         )}
@@ -103,10 +100,10 @@ export default function ServicesScreen() {
   return (
     <View style={styles.container}>
       {/*
-        白色背景层：从 hero 底部延伸到屏幕底部。
-        底部 overscroll 时露出白色；顶部 overscroll 穿透到 container 橙色。
+        底部暖白层：从 heroHeight 到屏幕底部，底部 overscroll 时露出暖白色。
+        顶部 overscroll 穿透到 container 橙色。
       */}
-      <View style={[styles.bottomWhiteBg, { top: heroHeight }]} />
+      <View style={[styles.bottomWarmBg, { top: heroHeight }]} />
 
       <ScrollView
         alwaysBounceVertical
@@ -115,7 +112,17 @@ export default function ServicesScreen() {
         scrollEventThrottle={16}
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 108 }]}>
+
+        {/* ── Hero ─────────────────────────────────────────────── */}
         <View style={[styles.hero, { height: heroHeight }]}>
+          <LinearGradient
+            colors={['#F59528', '#E07215', '#D46C10']}
+            start={{ x: 0.05, y: 0 }}
+            end={{ x: 0.95, y: 1 }}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+
           <Pressable onPress={handleOpenInbox} style={[styles.messageButton, { top: messageButtonTop }]}>
             <MessageSquareIcon width={18} height={18} />
             {hasUnreadInboxItems ? <View style={styles.messageBadge} /> : null}
@@ -123,40 +130,39 @@ export default function ServicesScreen() {
 
           <View style={styles.heroTitleGroup}>
             <Text style={styles.heroTitle}>活动精选</Text>
-            <Text style={styles.heroSubtitle}>实时更新近期精选活动</Text>
           </View>
 
           <DogHero width={131} height={172} style={styles.heroDog} />
         </View>
 
+        {/* ── Content Sheet ─────────────────────────────────────── */}
         <View style={styles.contentSheet}>
-          <View style={styles.featuredSection}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              decelerationRate="normal"
-              scrollEventThrottle={16}
-              style={styles.featuredScroll}
-              contentContainerStyle={styles.featuredRow}>
-              {featuredActivities.map((activity) => renderFeaturedCard(activity))}
-            </ScrollView>
+
+          {/* 活动精选横滑卡片 */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            decelerationRate="normal"
+            scrollEventThrottle={16}
+            contentContainerStyle={styles.featuredRow}>
+            {featuredActivities.map((activity) => renderFeaturedCard(activity))}
+          </ScrollView>
+
+          {/* 今日推荐模块标题 */}
+          <View style={styles.todayTitleGroup}>
+            <Text style={styles.todayModuleTitle}>今日推荐</Text>
           </View>
 
-          <View style={styles.todaySection}>
-            <View style={styles.todayTitleGroup}>
-              <Text style={styles.todaySectionTitle}>今日推荐</Text>
-              <Text style={styles.todaySectionSubtitle}>今日携宠出行诚意推荐</Text>
-            </View>
+          {/* 今日推荐横滑卡片 */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            decelerationRate="normal"
+            scrollEventThrottle={16}
+            contentContainerStyle={styles.todayRow}>
+            {todayPicks.map((spot) => renderTodayCard(spot))}
+          </ScrollView>
 
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              decelerationRate="normal"
-              scrollEventThrottle={16}
-              contentContainerStyle={styles.todayRow}>
-              {todayPicks.map((spot) => renderTodayCard(spot))}
-            </ScrollView>
-          </View>
         </View>
       </ScrollView>
     </View>
@@ -168,12 +174,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#ED8422',
   },
-  bottomWhiteBg: {
+  bottomWarmBg: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#FFFEFF',
+    backgroundColor: '#FFF8F2',
   },
   scrollView: {
     flex: 1,
@@ -182,6 +188,8 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
   },
+
+  // ── Hero ──────────────────────────────────────────────────────────
   hero: {
     position: 'relative',
     backgroundColor: '#ED8422',
@@ -190,18 +198,20 @@ const styles = StyleSheet.create({
   messageButton: {
     position: 'absolute',
     right: 16,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 3,
   },
   messageBadge: {
     position: 'absolute',
-    top: 6,
-    right: 6,
+    top: 7,
+    right: 7,
     width: 6,
     height: 6,
     borderRadius: 3,
@@ -215,16 +225,9 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   heroTitle: {
-    color: '#FFFEFF',
+    color: '#FFFFFF',
     fontSize: 32,
     lineHeight: 40,
-    fontWeight: '700',
-  },
-  heroSubtitle: {
-    marginTop: 2,
-    color: '#FFFEFF',
-    fontSize: 14,
-    lineHeight: 22,
     fontWeight: '700',
   },
   heroDog: {
@@ -233,39 +236,43 @@ const styles = StyleSheet.create({
     bottom: -42,
     zIndex: 0,
   },
+
+  // ── Content Sheet ─────────────────────────────────────────────────
   contentSheet: {
     flex: 1,
     minHeight: 620,
-    backgroundColor: '#FFFEFF',
-    paddingTop: 8,
+    backgroundColor: '#FFF8F2',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingTop: 26,
     zIndex: 2,
   },
+
+  // ── Featured cards ────────────────────────────────────────────────
   featuredRow: {
     paddingLeft: 16,
     paddingRight: 16,
     gap: 10,
   },
-  featuredSection: {
-    height: 232,
-  },
-  featuredScroll: {
-    flexGrow: 0,
-  },
   featuredCard: {
     width: 166,
-    height: 232,
-    borderRadius: 10,
+    height: 224,
+    borderRadius: 20,
     overflow: 'hidden',
-    backgroundColor: '#D9D9D9',
+    backgroundColor: '#EAD5BC',
+    shadowColor: '#C97010',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 3,
   },
   featuredCardImage: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#D9D9D9',
   },
   featuredCardPlaceholder: {
     flex: 1,
-    backgroundColor: '#D9D9D9',
+    backgroundColor: '#EAD5BC',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -277,7 +284,7 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.28)',
   },
   featuredCardGlowSmall: {
     position: 'absolute',
@@ -286,50 +293,47 @@ const styles = StyleSheet.create({
     width: 84,
     height: 84,
     borderRadius: 42,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
   featuredCardIconWrap: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.64)',
+    backgroundColor: 'rgba(255,255,255,0.72)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  todaySection: {
-    marginTop: 17,
-    paddingBottom: 6,
-  },
+
+  // ── Today module title ────────────────────────────────────────────
   todayTitleGroup: {
-    paddingHorizontal: 16,
+    marginTop: 28,
+    marginBottom: 14,
+    paddingHorizontal: 20,
   },
-  todaySectionTitle: {
-    color: '#404040',
+  todayModuleTitle: {
     fontSize: 32,
+    fontWeight: '700',
+    color: '#1A1A1A',
     lineHeight: 40,
-    fontWeight: '700',
   },
-  todaySectionSubtitle: {
-    marginTop: 2,
-    width: 331,
-    maxWidth: '100%',
-    color: '#404040',
-    fontSize: 14,
-    lineHeight: 22,
-    fontWeight: '700',
-  },
+
+  // ── Today cards ───────────────────────────────────────────────────
   todayRow: {
     paddingLeft: 16,
     paddingRight: 16,
-    paddingTop: 12,
     gap: 10,
   },
   todayCard: {
-    width: 343,
-    height: 187,
+    width: 260,
+    height: 160,
     borderRadius: 20,
     overflow: 'hidden',
-    backgroundColor: '#D9D9D9',
+    backgroundColor: '#EAD5BC',
+    shadowColor: '#C97010',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 3,
   },
   todayCardImage: {
     width: '100%',
@@ -337,9 +341,9 @@ const styles = StyleSheet.create({
   },
   todayCardPlaceholder: {
     flex: 1,
+    backgroundColor: '#EAD5BC',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#D9D9D9',
     overflow: 'hidden',
   },
   todayCardGlowLarge: {
@@ -349,7 +353,7 @@ const styles = StyleSheet.create({
     width: 140,
     height: 140,
     borderRadius: 70,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.22)',
   },
   todayCardGlowSmall: {
     position: 'absolute',
@@ -358,16 +362,18 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(255,255,255,0.16)',
   },
   todayCardIconWrap: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: 'rgba(255,255,255,0.62)',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(255,255,255,0.7)',
     alignItems: 'center',
     justifyContent: 'center',
   },
+
+  // ── Shared ────────────────────────────────────────────────────────
   cardPressed: {
     opacity: 0.88,
   },

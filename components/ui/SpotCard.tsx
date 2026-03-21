@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   Image,
   Pressable,
@@ -51,7 +52,7 @@ export function SpotCard({
           <Image source={{ uri: photoUri }} style={styles.thumbnail} />
         ) : (
           <View style={styles.thumbnailPlaceholder}>
-            <Text style={styles.thumbnailPlaceholderText}>暂无图片</Text>
+            <Ionicons name="image-outline" size={20} color={theme.colors.textTertiary} />
           </View>
         )}
         <View style={styles.topMeta}>
@@ -99,7 +100,9 @@ export function SpotCard({
 
   if (onPress) {
     return (
-      <Pressable onPress={onPress} style={[styles.card, style]}>
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [styles.card, pressed && styles.cardPressed, style]}>
         {topContent}
         {tagsContent}
         {bottomContent}
@@ -126,6 +129,10 @@ const styles = StyleSheet.create({
     padding: 16,
     ...theme.shadows.card,
   },
+  cardPressed: {
+    opacity: 0.87,
+    transform: [{ scale: 0.993 }],
+  },
   topRow: {
     flexDirection: 'row',
     gap: theme.spacing.sm,
@@ -151,11 +158,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 8,
-  },
-  thumbnailPlaceholderText: {
-    fontSize: 11,
-    color: theme.colors.textSecondary,
-    textAlign: 'center',
   },
   title: {
     fontSize: 20,

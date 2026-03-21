@@ -10,6 +10,7 @@ import {
   Easing,
   Image,
   Linking,
+  Modal,
   PanResponder,
   Platform,
   Pressable,
@@ -54,7 +55,15 @@ import VetSmallMarker from '@/assets/markers/vet-small.svg';
 import { MapQuickActions } from '@/components/map/MapQuickActions';
 import { SpotFormModal } from '@/components/map/SpotFormModal';
 import { ACTIVITY_COLLECTIONS, type ActivityCollection } from '@/constants/activityCollections';
+import { ADMIN_MODE_ENABLED } from '@/constants/adminConfig';
+import { normalizeSpotTags } from '@/constants/spotFormOptions';
 import { theme } from '@/constants/theme';
+import {
+  deleteSystemSpotViaAdminEndpoint,
+  publishSpotViaAdminEndpoint,
+  updateSystemSpotPhotosViaAdminEndpoint,
+  updateSystemSpotInSupabase,
+} from '@/repo/cloudSpotsRepo';
 import { usePetMapStore } from '@/store/petmap-store';
 import type { Spot, SpotType } from '@/types/spot';
 import { getDistanceMeters } from '@/utils/distance';
@@ -86,6 +95,7 @@ const MARKER_FOCUS_DELTA = 360 / Math.pow(2, MARKER_FOCUS_ZOOM); // ≈ 0.0252
 
 const MARKER_DEFAULT_SVG_SIZE  = 50; // default SVG intrinsic width/height
 const MARKER_SELECTED_SVG_SIZE = 60; // selected SVG intrinsic width/height
+const MAX_SYSTEM_SPOT_PHOTOS = 6;
 
 function getZoomFromRegion(region: Region): number {
   return Math.log2(360 / region.longitudeDelta);
@@ -321,50 +331,18 @@ function stripLeadingDistrict(detail: string, district: string) {
   return withoutDistrict || normalizedDetail;
 }
 
-function resolveSourceInfoDisplay(spot: Spot | null | undefined) {
-  if (!spot) {
-    return null;
-  }
-
-  if (spot.source === 'system') {
-    return {
-      label: '平台整理',
-      color: '#ED8422',
-    };
-  }
-
-  if (
-    spot.source !== 'user' ||
-    spot.submissionStatus === 'local' ||
-    spot.submissionStatus === 'pending_review' ||
-    !spot.verified
-  ) {
-    return null;
-  }
-
-  const dynamicSpot = spot as Record<string, unknown>;
-  const userNameCandidateKeys = [
-    'userName',
-    'username',
-    'creatorName',
-    'authorName',
-    'submittedByName',
-    'providerName',
-  ] as const;
-  const userName = userNameCandidateKeys
-    .map((key) => dynamicSpot[key])
-    .find((value): value is string => typeof value === 'string' && value.trim().length > 0)
-    ?.trim();
-
-  if (!userName) {
-    return null;
-  }
+function getSpotDisplayAddressParts(spot: Pick<Spot, 'district' | 'addressHint' | 'formattedAddress'>) {
+  const district = spot.district.trim() || '未知区域';
+  const primaryAddress = spot.formattedAddress?.trim() || spot.addressHint.trim() || '地址待补充';
+  const detail = stripLeadingDistrict(primaryAddress, district) || '地址待补充';
 
   return {
-    label: `由 @${userName} 提供`,
-    color: '#2EA65A',
+    district,
+    detail,
+    full: primaryAddress,
   };
 }
+
 
 function resolveMarkerVisualCategory(spot: Pick<Spot, 'source' | 'spotType'>): MarkerVisualCategory | null {
   if (spot.source === 'user') {
@@ -443,11 +421,15 @@ export default function TabOneScreen() {
   const mapRef = useRef<MapView | null>(null);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [editingSpotId, setEditingSpotId] = useState<string | null>(null);
+  const [editingSpotSource, setEditingSpotSource] = useState<Spot['source'] | null>(null);
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
   const [pendingCoords, setPendingCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [pendingFormattedAddress, setPendingFormattedAddress] = useState('');
   const [isResolvingPendingAddress, setIsResolvingPendingAddress] = useState(false);
   const [formError, setFormError] = useState('');
+  const [isSubmittingSpot, setIsSubmittingSpot] = useState(false);
+  const [isPhotoManagerVisible, setIsPhotoManagerVisible] = useState(false);
+  const [isManagingSystemPhotos, setIsManagingSystemPhotos] = useState(false);
   const [sheetStage, setSheetStage] = useState<SheetStage>('collapsed');
   const [sheetVisibleHeight, setSheetVisibleHeight] = useState(0);
   const [isFilterPanelVisible, setIsFilterPanelVisible] = useState(false);
@@ -468,7 +450,13 @@ export default function TabOneScreen() {
     businessHours: '',
     contact: '',
     tags: [] as string[],
+    spotType: 'other' as Spot['spotType'],
   });
+  const [createCoverImage, setCreateCoverImage] = useState<{
+    uri: string;
+    base64Data: string;
+    mimeType: string;
+  } | null>(null);
   const {
     hasHydratedStorage,
     favoriteCount,
@@ -477,6 +465,7 @@ export default function TabOneScreen() {
     userLoc,
     userSpots,
     addSpot,
+    addSystemSpot,
     updateSpot,
     removeSpot,
     addSpotPhoto,
@@ -866,12 +855,6 @@ export default function TabOneScreen() {
   // overriding the zoom-in animation started by the selectedSpot?.id effect above.
 
   useEffect(() => {
-    console.log('[Map][addressEffect]', {
-      hasHydratedStorage,
-      selectedSpotId: selectedSpot?.id ?? null,
-      hasFormattedAddress: Boolean(selectedSpot?.formattedAddress),
-    });
-
     if (!hasHydratedStorage || !selectedSpot || selectedSpot.formattedAddress || !amapWebKey) {
       return;
     }
@@ -1005,6 +988,7 @@ export default function TabOneScreen() {
   }) {
     setModalMode('create');
     setEditingSpotId(null);
+    setEditingSpotSource(null);
     setPendingCoords({
       lat: nativeEvent.coordinate.latitude,
       lng: nativeEvent.coordinate.longitude,
@@ -1018,21 +1002,26 @@ export default function TabOneScreen() {
       businessHours: '',
       contact: '',
       tags: [],
+      spotType: 'other',
     });
     setPendingFormattedAddress('');
     setIsResolvingPendingAddress(false);
     setFormError('');
+    setCreateCoverImage(null);
     setIsCreateModalVisible(true);
   }
 
   function closeCreateModal() {
     setIsCreateModalVisible(false);
+    setIsSubmittingSpot(false);
     setPendingCoords(null);
     setEditingSpotId(null);
+    setEditingSpotSource(null);
     setModalMode('create');
     setPendingFormattedAddress('');
     setIsResolvingPendingAddress(false);
     setFormError('');
+    setCreateCoverImage(null);
   }
 
   function updateFormValue(
@@ -1053,7 +1042,7 @@ export default function TabOneScreen() {
     }));
   }
 
-  function handleSubmitSpot() {
+  async function handleSubmitSpot() {
     if (!pendingCoords) {
       return;
     }
@@ -1079,7 +1068,7 @@ export default function TabOneScreen() {
     }
 
     if (modalMode === 'edit') {
-      if (!editingSpotId || !selectedSpot || selectedSpot.source !== 'user') {
+      if (!editingSpotId || !selectedSpot) {
         return;
       }
 
@@ -1089,25 +1078,91 @@ export default function TabOneScreen() {
         name,
         district,
         addressHint,
-        lat: pendingCoords.lat,
-        lng: pendingCoords.lng,
+        formattedAddress: formattedAddress || selectedSpot.formattedAddress,
+        lat: selectedSpot.lat,
+        lng: selectedSpot.lng,
         tags,
         description,
+        spotType: formValues.spotType,
         petFriendlyLevel,
         businessHours,
         contact,
       };
 
+      if (selectedSpot.source === 'system') {
+        if (!ADMIN_MODE_ENABLED) {
+          return;
+        }
+
+        setIsSubmittingSpot(true);
+        try {
+          const savedSpot = await updateSystemSpotInSupabase(updatedSpot);
+          updateSpot(savedSpot);
+          setSelectedSpot(savedSpot.id);
+          closeCreateModal();
+          Alert.alert('保存成功', '系统地点信息已更新');
+        } catch (err) {
+          setFormError(err instanceof Error ? err.message : '保存失败，请稍后重试');
+        } finally {
+          setIsSubmittingSpot(false);
+        }
+        return;
+      }
+
       updateSpot(updatedSpot);
       setSelectedSpot(updatedSpot.id);
       Alert.alert('保存成功', '地点信息已更新');
+      closeCreateModal();
+    } else if (ADMIN_MODE_ENABLED) {
+      // ── Admin mode: publish directly to spots via server-side Edge Function ──
+      const draftSpot: Spot = {
+        id: `draft-${Date.now()}`, // temporary; replaced by Supabase UUID on success
+        name,
+        source: 'system',
+        spotType: formValues.spotType,
+        district,
+        addressHint,
+        formattedAddress: formattedAddress || undefined,
+        lat: pendingCoords.lat,
+        lng: pendingCoords.lng,
+        tags,
+        description,
+        votes: 5,
+        petFriendlyLevel,
+        businessHours,
+        contact,
+        verified: true,
+        merchantStatus: 'none',
+      };
+
+      setIsSubmittingSpot(true);
+      try {
+        const publishedSpot = await publishSpotViaAdminEndpoint(
+          draftSpot,
+          createCoverImage
+            ? {
+                base64Data: createCoverImage.base64Data,
+                mimeType: createCoverImage.mimeType,
+              }
+            : undefined
+        );
+        addSystemSpot(publishedSpot);
+        closeCreateModal();
+        setSelectedSpot(publishedSpot.id);
+        Alert.alert('发布成功', `「${name}」已发布到地图，立即可见`);
+      } catch (err) {
+        setFormError(err instanceof Error ? err.message : '发布失败，请稍后重试');
+      } finally {
+        setIsSubmittingSpot(false);
+      }
     } else {
-      const newSpot = {
+      // ── Normal user mode: save locally ───────────────────────────────────────
+      const newSpot: Spot = {
         id: `user-spot-${Date.now()}`,
         name,
-        source: 'user' as const,
-        submissionStatus: 'local' as const,
-        spotType: 'other' as const,
+        source: 'user',
+        submissionStatus: 'local',
+        spotType: 'other',
         district,
         addressHint,
         formattedAddress: formattedAddress || undefined,
@@ -1119,23 +1174,28 @@ export default function TabOneScreen() {
         petFriendlyLevel,
         businessHours,
         contact,
+        photoUris: createCoverImage?.uri ? [createCoverImage.uri] : undefined,
       };
 
       addSpot(newSpot);
       setSelectedSpot(newSpot.id);
       Alert.alert('新增成功', '新地点已保存在本机');
+      closeCreateModal();
     }
-
-    closeCreateModal();
   }
 
   function handleEditSpot() {
-    if (!selectedSpot || selectedSpot.source !== 'user') {
+    if (!selectedSpot) {
+      return;
+    }
+
+    if (selectedSpot.source === 'system' && !ADMIN_MODE_ENABLED) {
       return;
     }
 
     setModalMode('edit');
     setEditingSpotId(selectedSpot.id);
+    setEditingSpotSource(selectedSpot.source);
     setPendingCoords({
       lat: selectedSpot.lat,
       lng: selectedSpot.lng,
@@ -1149,10 +1209,12 @@ export default function TabOneScreen() {
       businessHours: selectedSpot.businessHours ?? '',
       contact: selectedSpot.contact ?? '',
       tags: selectedSpot.tags,
+      spotType: selectedSpot.spotType ?? 'other',
     });
     setPendingFormattedAddress(selectedSpot.formattedAddress ?? '');
     setIsResolvingPendingAddress(false);
     setFormError('');
+    setCreateCoverImage(null);
     setIsCreateModalVisible(true);
   }
 
@@ -1174,6 +1236,235 @@ export default function TabOneScreen() {
     ]);
   }
 
+  function handleDeleteSystemSpot() {
+    if (!selectedSpot || selectedSpot.source !== 'system' || !ADMIN_MODE_ENABLED) {
+      return;
+    }
+
+    const spotId = selectedSpot.id;
+    const spotName = selectedSpot.name;
+
+    Alert.alert(
+      '删除系统地点？',
+      `删除后「${spotName}」会从前台地图中消失，且无法恢复。`,
+      [
+        {
+          text: '取消',
+          style: 'cancel',
+        },
+        {
+          text: '删除',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteSystemSpotViaAdminEndpoint(spotId);
+              removeSpot(spotId);
+              Alert.alert('删除成功', `「${spotName}」已删除`);
+            } catch (err) {
+              Alert.alert(
+                '删除失败',
+                err instanceof Error ? err.message : '删除失败，请稍后重试'
+              );
+            }
+          },
+        },
+      ]
+    );
+  }
+
+  function openSystemPhotoManager() {
+    if (!selectedSpot || selectedSpot.source !== 'system' || !ADMIN_MODE_ENABLED) {
+      return;
+    }
+
+    setIsPhotoManagerVisible(true);
+  }
+
+  function closeSystemPhotoManager() {
+    if (isManagingSystemPhotos) {
+      return;
+    }
+
+    setIsPhotoManagerVisible(false);
+  }
+
+  async function pickSingleImageAsBase64() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert('无法访问相册', '请先在系统设置中允许访问相册。');
+      return null;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+      base64: true,
+    });
+
+    if (result.canceled || result.assets.length === 0) {
+      return null;
+    }
+
+    const asset = result.assets[0];
+    const base64Data = asset?.base64?.trim() ?? '';
+
+    if (!base64Data) {
+      Alert.alert('上传失败', '未读取到图片数据，请重试。');
+      return null;
+    }
+
+    return {
+      uri: asset?.uri?.trim() || '',
+      base64Data,
+      mimeType: asset?.mimeType?.trim() || 'image/jpeg',
+    };
+  }
+
+  async function handlePickCreateCoverPhoto() {
+    const imagePayload = await pickSingleImageAsBase64();
+
+    if (!imagePayload) {
+      return;
+    }
+
+    if (!imagePayload.uri) {
+      Alert.alert('上传失败', '未读取到图片预览地址，请重试。');
+      return;
+    }
+
+    setCreateCoverImage(imagePayload);
+  }
+
+  function handleRemoveCreateCoverPhoto() {
+    setCreateCoverImage(null);
+  }
+
+  async function handleAddSystemSpotPhoto() {
+    if (!selectedSpot || selectedSpot.source !== 'system' || !ADMIN_MODE_ENABLED) {
+      return;
+    }
+
+    if (selectedSpotPhotoUris.length >= MAX_SYSTEM_SPOT_PHOTOS) {
+      Alert.alert('已达上限', `最多支持 ${MAX_SYSTEM_SPOT_PHOTOS} 张图片`);
+      return;
+    }
+
+    const imagePayload = await pickSingleImageAsBase64();
+
+    if (!imagePayload) {
+      return;
+    }
+
+    setIsManagingSystemPhotos(true);
+    try {
+      const savedSpot = await updateSystemSpotPhotosViaAdminEndpoint({
+        spotId: selectedSpot.id,
+        action: 'add',
+        base64Data: imagePayload.base64Data,
+        mimeType: imagePayload.mimeType,
+      });
+      updateSpot(savedSpot);
+      setSelectedSpot(savedSpot.id);
+    } catch (err) {
+      Alert.alert(
+        '操作失败',
+        err instanceof Error ? err.message : '图片新增失败，请稍后重试'
+      );
+    } finally {
+      setIsManagingSystemPhotos(false);
+    }
+  }
+
+  async function handleReplaceSystemSpotPhoto(index: number) {
+    if (!selectedSpot || selectedSpot.source !== 'system' || !ADMIN_MODE_ENABLED) {
+      return;
+    }
+
+    const imagePayload = await pickSingleImageAsBase64();
+
+    if (!imagePayload) {
+      return;
+    }
+
+    setIsManagingSystemPhotos(true);
+    try {
+      const savedSpot = await updateSystemSpotPhotosViaAdminEndpoint({
+        spotId: selectedSpot.id,
+        action: 'replace',
+        index,
+        base64Data: imagePayload.base64Data,
+        mimeType: imagePayload.mimeType,
+      });
+      updateSpot(savedSpot);
+      setSelectedSpot(savedSpot.id);
+    } catch (err) {
+      Alert.alert(
+        '操作失败',
+        err instanceof Error ? err.message : '图片替换失败，请稍后重试'
+      );
+    } finally {
+      setIsManagingSystemPhotos(false);
+    }
+  }
+
+  function handleDeleteSystemSpotPhoto(index: number) {
+    if (!selectedSpot || selectedSpot.source !== 'system' || !ADMIN_MODE_ENABLED) {
+      return;
+    }
+
+    Alert.alert('删除这张图片？', '删除后将无法恢复。', [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '删除',
+        style: 'destructive',
+        onPress: async () => {
+          setIsManagingSystemPhotos(true);
+          try {
+            const savedSpot = await updateSystemSpotPhotosViaAdminEndpoint({
+              spotId: selectedSpot.id,
+              action: 'delete',
+              index,
+            });
+            updateSpot(savedSpot);
+            setSelectedSpot(savedSpot.id);
+          } catch (err) {
+            Alert.alert(
+              '操作失败',
+              err instanceof Error ? err.message : '图片删除失败，请稍后重试'
+            );
+          } finally {
+            setIsManagingSystemPhotos(false);
+          }
+        },
+      },
+    ]);
+  }
+
+  async function handleSetSystemSpotCover(index: number) {
+    if (!selectedSpot || selectedSpot.source !== 'system' || !ADMIN_MODE_ENABLED) {
+      return;
+    }
+
+    setIsManagingSystemPhotos(true);
+    try {
+      const savedSpot = await updateSystemSpotPhotosViaAdminEndpoint({
+        spotId: selectedSpot.id,
+        action: 'set_cover',
+        index,
+      });
+      updateSpot(savedSpot);
+      setSelectedSpot(savedSpot.id);
+    } catch (err) {
+      Alert.alert(
+        '操作失败',
+        err instanceof Error ? err.message : '设置封面失败，请稍后重试'
+      );
+    } finally {
+      setIsManagingSystemPhotos(false);
+    }
+  }
+
   async function handleSubmitForReview() {
     if (
       !selectedSpot ||
@@ -1187,14 +1478,14 @@ export default function TabOneScreen() {
 
     if (result.success) {
       if (result.mode === 'cloud') {
-        Alert.alert('提交成功', '该地点已提交到云端审核队列');
+        Alert.alert('提交成功', '该地点已提交审核。');
       } else {
-        Alert.alert('已标记待审核', '当前未接入云端，已先在本地标记为待审核');
+        Alert.alert('提交成功', '该地点已标记为待审核。');
       }
       return;
     }
 
-    Alert.alert('提交失败', result.error ?? '提交失败，请稍后重试');
+    Alert.alert('提交失败', '提交失败，请稍后重试。');
   }
 
   async function handlePickSpotPhoto() {
@@ -1376,18 +1667,14 @@ export default function TabOneScreen() {
   const shouldUseReadonlyDistrict =
     Boolean(pendingFormattedAddress.trim()) &&
     Boolean(formValues.district.trim());
-  const selectedSpotFallbackAddress =
-    selectedSpot &&
-    [selectedSpot.district, selectedSpot.addressHint]
-      .map((value) => value.trim())
-      .filter(Boolean)
-      .join(' · ');
+  const selectedSpotAddressParts = selectedSpot
+    ? getSpotDisplayAddressParts(selectedSpot)
+    : null;
   const selectedSpotDisplayAddress =
-    selectedSpot?.formattedAddress?.trim() || selectedSpotFallbackAddress || '地址待补充';
+    selectedSpotAddressParts?.full || '地址待补充';
   const collapsedPreviewUri = selectedSpotPhotoUris[0];
   const collapsedTypeLabel = selectedSpot ? COLLAPSED_TYPE_LABELS[selectedSpot.spotType] : '';
   const selectedTypeBadgePalette = selectedSpot ? TYPE_BADGE_COLORS[selectedSpot.spotType] : TYPE_BADGE_COLORS.other;
-  const sourceInfoDisplay = resolveSourceInfoDisplay(selectedSpot);
   const collapsedDistanceText =
     selectedSpot && userLoc
       ? formatCollapsedDistance(
@@ -1397,23 +1684,24 @@ export default function TabOneScreen() {
           })
         )
       : '9.5km';
-  const collapsedDistrict = selectedSpot?.district.trim() || '未知区域';
-  const collapsedAddressDetail = selectedSpot
-    ? stripLeadingDistrict(
-        selectedSpot.formattedAddress?.trim() ||
-          selectedSpot.addressHint.trim() ||
-          selectedSpotDisplayAddress.replace(`${collapsedDistrict} · `, '').trim() ||
-          '地址待补充',
-        collapsedDistrict
-      ) || '地址待补充'
-    : '地址待补充';
-  const collapsedTags = selectedSpot ? selectedSpot.tags.slice(0, 4) : [];
-  const halfTags = selectedSpot ? selectedSpot.tags.slice(0, 4) : [];
-  const halfDescription =
-    selectedSpot?.description.trim() || '该地点的详细介绍暂未补充，后续会继续完善。';
-  const halfBusinessHours = selectedSpot?.businessHours?.trim() || '待补充';
+  const collapsedDistrict = selectedSpotAddressParts?.district || '未知区域';
+  const collapsedAddressDetail = selectedSpotAddressParts?.detail || '地址待补充';
+  const collapsedTags = selectedSpot ? normalizeSpotTags(selectedSpot.tags, selectedSpot.name).slice(0, 3) : [];
+  const halfTags = selectedSpot ? normalizeSpotTags(selectedSpot.tags, selectedSpot.name).slice(0, 3) : [];
+  const halfDescription = selectedSpot?.description.trim() || '地点信息持续完善中。';
+  const halfBusinessHours = selectedSpot?.businessHours?.trim() || '';
+  const halfContact = selectedSpot?.contact?.trim() || '';
+  const halfInfoItems = [
+    halfBusinessHours ? `营业时间：${halfBusinessHours}` : null,
+    halfContact ? `联系方式：${halfContact}` : null,
+    selectedSpot?.merchantStatus === 'claimed' ? '商家已认证' : null,
+  ].filter(Boolean) as string[];
   const halfPhotoUris = selectedSpotPhotoUris.slice(0, 6);
   const halfAddressDetail = collapsedAddressDetail;
+  const halfLocationLine =
+    halfAddressDetail === '地址待补充'
+      ? collapsedDistrict
+      : `${collapsedDistrict} · ${halfAddressDetail}`;
   const linkedWeeklyActivity = useMemo(() => {
     if (!selectedSpot) {
       return null;
@@ -1421,7 +1709,6 @@ export default function TabOneScreen() {
 
     return ACTIVITY_COLLECTIONS.find((activity) => activity.spotIds.includes(selectedSpot.id)) ?? null;
   }, [selectedSpot]);
-  const fullHeroPhoto = halfPhotoUris[0];
   const fullDistanceText =
     selectedSpot && userLoc
       ? (() => {
@@ -1436,6 +1723,7 @@ export default function TabOneScreen() {
         })()
       : null;
   const isUserOwnedSpot = selectedSpot?.source === 'user';
+  const isAdminSystemSpot = ADMIN_MODE_ENABLED && selectedSpot?.source === 'system';
   const ownerSpotStatusLabel =
     selectedSpot?.submissionStatus === 'pending_review'
       ? '审核中'
@@ -1593,6 +1881,7 @@ export default function TabOneScreen() {
         : [...current, category]
     );
   }
+
 
   function handleSelectAllMarkerFilters() {
     setSelectedMarkerFilters(ALL_MARKER_FILTER_KEYS);
@@ -1927,7 +2216,7 @@ export default function TabOneScreen() {
             colors={
               sheetStage === 'full'
                 ? ['rgba(255,254,255,0.97)', 'rgba(255,254,255,0.97)']
-                : ['rgba(255,255,255,0.88)', 'rgba(242,246,255,0.72)']
+                : ['rgba(255,255,255,0.94)', 'rgba(255,248,242,0.78)']
             }
             start={{ x: 0, y: 0 }}
             end={{ x: 0, y: 1 }}
@@ -1954,16 +2243,6 @@ export default function TabOneScreen() {
                     {collapsedTypeLabel}
                   </Text>
                 </View>
-                {sourceInfoDisplay ? (
-                  <View style={styles.collapsedSourceInfo}>
-                    <View style={[styles.collapsedSourceIcon, { borderColor: sourceInfoDisplay.color }]}>
-                      <View style={[styles.collapsedSourceIconDot, { backgroundColor: sourceInfoDisplay.color }]} />
-                    </View>
-                    <Text style={[styles.collapsedSourceInfoText, { color: sourceInfoDisplay.color }]}>
-                      {sourceInfoDisplay.label}
-                    </Text>
-                  </View>
-                ) : null}
               </View>
 
               <View style={styles.collapsedSummaryRow}>
@@ -2007,9 +2286,7 @@ export default function TabOneScreen() {
                 {collapsedPreviewUri ? (
                   <Image source={{ uri: collapsedPreviewUri }} style={styles.collapsedPreviewImage} />
                 ) : (
-                  <View style={styles.collapsedPreviewPlaceholder}>
-                    <Text style={styles.collapsedPreviewPlaceholderText}>小狗摄影在路上</Text>
-                  </View>
+                  <View style={styles.collapsedPreviewPlaceholder} />
                 )}
               </View>
             </Pressable>
@@ -2027,16 +2304,6 @@ export default function TabOneScreen() {
                       {collapsedTypeLabel}
                     </Text>
                   </View>
-                  {sourceInfoDisplay ? (
-                    <View style={styles.collapsedSourceInfo}>
-                      <View style={[styles.collapsedSourceIcon, { borderColor: sourceInfoDisplay.color }]}>
-                        <View style={[styles.collapsedSourceIconDot, { backgroundColor: sourceInfoDisplay.color }]} />
-                      </View>
-                      <Text style={[styles.collapsedSourceInfoText, { color: sourceInfoDisplay.color }]}>
-                        {sourceInfoDisplay.label}
-                      </Text>
-                    </View>
-                  ) : null}
                 </View>
 
                 <View style={styles.halfMainInfoRow}>
@@ -2051,24 +2318,22 @@ export default function TabOneScreen() {
                     </View>
 
                     <View style={styles.halfAddressRow}>
-                      <Text style={styles.halfDistrict} numberOfLines={1}>
-                        {collapsedDistrict}
-                      </Text>
-                      <Text style={styles.halfAddressDot}>·</Text>
                       <Text style={styles.halfAddress} numberOfLines={1}>
-                        {halfAddressDetail}
+                        {halfLocationLine}
                       </Text>
                     </View>
 
-                    <View style={styles.halfTagsRow}>
-                      {(halfTags.length > 0 ? halfTags : ['安静']).map((tag) => (
-                        <View key={`${selectedSpot.id}-${tag}`} style={styles.collapsedTag}>
-                          <Text style={styles.collapsedTagText} numberOfLines={1}>
-                            {tag}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
+                    {halfTags.length > 0 ? (
+                      <View style={styles.halfTagsRow}>
+                        {halfTags.map((tag) => (
+                          <View key={`${selectedSpot.id}-${tag}`} style={styles.collapsedTag}>
+                            <Text style={styles.collapsedTagText} numberOfLines={1}>
+                              {tag}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
                   </View>
 
                   <View style={styles.halfActionCluster}>
@@ -2096,15 +2361,21 @@ export default function TabOneScreen() {
                 </View>
 
                 <View style={styles.halfFactsAndHeatRow}>
-                  <View style={styles.halfFactsLeft}>
-                    <Text style={styles.halfFactText} numberOfLines={1}>
-                      营业时间：{halfBusinessHours}
-                    </Text>
-                    <View style={styles.halfClaimRow}>
-                      <Ionicons name="checkmark-circle" size={12} color="#ED8422" />
-                      <Text style={styles.halfClaimText}>商家已认证</Text>
+                  {halfInfoItems.length > 0 ? (
+                    <View style={styles.halfFactsLeft}>
+                      {halfInfoItems.map((item) => (
+                        <Text key={`${selectedSpot.id}-${item}`} style={styles.halfFactText} numberOfLines={1}>
+                          {item}
+                        </Text>
+                      ))}
                     </View>
-                  </View>
+                  ) : (
+                    <View style={styles.halfFactsLeft}>
+                      <Text style={styles.halfFactText} numberOfLines={1}>
+                        详细信息待补充
+                      </Text>
+                    </View>
+                  )}
 
                   <View style={styles.halfHeatInfo}>
                     <HeatIcon width={13} height={13} />
@@ -2154,21 +2425,44 @@ export default function TabOneScreen() {
                   </View>
                 </View>
               ) : null}
+              {isAdminSystemSpot ? (
+                <View style={styles.ownerActionsSection}>
+                  <Text style={styles.ownerActionsTitle}>系统地点管理</Text>
+                  <View style={styles.ownerActionsGrid}>
+                    <Pressable onPress={handleEditSpot} style={styles.ownerActionButton}>
+                      <Text style={styles.ownerActionButtonText}>编辑地点</Text>
+                    </Pressable>
+                    <Pressable onPress={openSystemPhotoManager} style={styles.ownerActionButton}>
+                      <Text style={styles.ownerActionButtonText}>管理图片</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={handleDeleteSystemSpot}
+                      style={[styles.ownerActionButton, styles.ownerDeleteButton]}>
+                      <Text style={[styles.ownerActionButtonText, styles.ownerDeleteButtonText]}>
+                        删除地点
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
 
               <View style={styles.halfDetailContent}>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.halfPhotosRow}>
-                  {halfPhotoUris.map((uri) => (
-                    <Image key={`${selectedSpot.id}-${uri}`} source={{ uri }} style={styles.halfPhoto} />
-                  ))}
-
-                  {halfPhotoUris.length === 0 || halfPhotoUris.length === 1 ? (
-                    <View style={styles.halfPhotoPlaceholder}>
-                      <Text style={styles.halfPhotoPlaceholderText}>小狗摄影在路上</Text>
+                  {halfPhotoUris.length > 0 ? (
+                    halfPhotoUris.map((uri) => (
+                      <View key={`${selectedSpot.id}-${uri}`} style={styles.halfPhotoCard}>
+                        <Image source={{ uri }} style={styles.halfPhoto} />
+                      </View>
+                    ))
+                  ) : (
+                    <View style={styles.halfPhotoEmptyState}>
+                      <Ionicons name="images-outline" size={16} color="#8D877F" />
+                      <Text style={styles.halfPhotoEmptyStateText}>地点图片待补充</Text>
                     </View>
-                  ) : null}
+                  )}
                 </ScrollView>
 
                 <View style={styles.halfDescriptionSection}>
@@ -2204,9 +2498,6 @@ export default function TabOneScreen() {
                   <Pressable onPress={handleOpenSpotFeedback} style={styles.halfFeedbackButton}>
                     <Text style={styles.halfFeedbackButtonText}>反馈地点信息</Text>
                   </Pressable>
-                  <Text style={styles.halfFeedbackText}>
-                    该地点由平台整理维护，欢迎反馈修正；商家认领后可支持信息更新。
-                  </Text>
                 </View>
               </View>
 
@@ -2223,12 +2514,10 @@ export default function TabOneScreen() {
               <View style={styles.fullTopPhotoGestureArea}>
                 {halfPhotoUris.length === 0 ? (
                   // No photos → placeholder
-                  <View style={styles.fullTopPhotoPlaceholder}>
-                    <Text style={styles.fullTopPhotoPlaceholderText}>小狗摄影在路上</Text>
-                  </View>
+                  <View style={styles.fullTopPhotoPlaceholder} />
                 ) : halfPhotoUris.length === 1 ? (
                   // Single photo → plain image
-                  <Image source={{ uri: halfPhotoUris[0] }} style={styles.fullTopPhoto} />
+                  <Image source={{ uri: halfPhotoUris[0] }} style={styles.fullTopPhoto} resizeMode="cover" />
                 ) : (
                   // Multiple photos → horizontal paging carousel
                   <View>
@@ -2287,16 +2576,6 @@ export default function TabOneScreen() {
                           {collapsedTypeLabel}
                         </Text>
                       </View>
-                      {sourceInfoDisplay ? (
-                        <View style={styles.collapsedSourceInfo}>
-                          <View style={[styles.collapsedSourceIcon, { borderColor: sourceInfoDisplay.color }]}>
-                            <View style={[styles.collapsedSourceIconDot, { backgroundColor: sourceInfoDisplay.color }]} />
-                          </View>
-                          <Text style={[styles.collapsedSourceInfoText, { color: sourceInfoDisplay.color }]}>
-                            {sourceInfoDisplay.label}
-                          </Text>
-                        </View>
-                      ) : null}
                     </View>
 
                     <Text style={styles.fullPanelTitle} numberOfLines={2}>
@@ -2312,13 +2591,15 @@ export default function TabOneScreen() {
                       <Text style={styles.fullPanelAddress} numberOfLines={2}>{halfAddressDetail}</Text>
                     </View>
 
-                    <View style={styles.fullPanelTagsRow}>
-                      {(halfTags.length > 0 ? halfTags : ['安静']).map((tag) => (
-                        <View key={`${selectedSpot.id}-${tag}-full`} style={styles.collapsedTag}>
-                          <Text style={styles.collapsedTagText} numberOfLines={1}>{tag}</Text>
-                        </View>
-                      ))}
-                    </View>
+                    {halfTags.length > 0 ? (
+                      <View style={styles.fullPanelTagsRow}>
+                        {halfTags.map((tag) => (
+                          <View key={`${selectedSpot.id}-${tag}-full`} style={styles.collapsedTag}>
+                            <Text style={styles.collapsedTagText} numberOfLines={1}>{tag}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
                   </View>
 
                   {/* ──────── §3 Action Section ──────── */}
@@ -2357,14 +2638,30 @@ export default function TabOneScreen() {
 
                   {/* ──────── §4 Facts Section ──────── */}
                   <View style={styles.fullFactsSection}>
-                    <View style={styles.fullFactRow}>
-                      <Ionicons name="time-outline" size={14} color="#888888" />
-                      <Text style={styles.fullFactText}>营业时间：{halfBusinessHours}</Text>
-                    </View>
-                    <View style={styles.fullFactRow}>
-                      <Ionicons name="checkmark-circle" size={14} color="#ED8422" />
-                      <Text style={styles.fullFactText}>商家已认证</Text>
-                    </View>
+                    {halfBusinessHours ? (
+                      <View style={styles.fullFactRow}>
+                        <Ionicons name="time-outline" size={14} color="#888888" />
+                        <Text style={styles.fullFactText}>营业时间：{halfBusinessHours}</Text>
+                      </View>
+                    ) : null}
+                    {halfContact ? (
+                      <View style={styles.fullFactRow}>
+                        <Ionicons name="call-outline" size={14} color="#888888" />
+                        <Text style={styles.fullFactText}>联系方式：{halfContact}</Text>
+                      </View>
+                    ) : null}
+                    {selectedSpot?.merchantStatus === 'claimed' ? (
+                      <View style={styles.fullFactRow}>
+                        <Ionicons name="checkmark-circle" size={14} color="#ED8422" />
+                        <Text style={styles.fullFactText}>商家已认证</Text>
+                      </View>
+                    ) : null}
+                    {!halfBusinessHours && !halfContact && selectedSpot?.merchantStatus !== 'claimed' ? (
+                      <View style={styles.fullFactRow}>
+                        <Ionicons name="information-circle-outline" size={14} color="#A09A91" />
+                        <Text style={styles.fullFactText}>营业时间和联系方式待补充</Text>
+                      </View>
+                    ) : null}
                   </View>
 
                   {/* ──────── §5 Description Section ──────── */}
@@ -2403,9 +2700,6 @@ export default function TabOneScreen() {
                       <Pressable onPress={handleOpenSpotFeedback} style={styles.fullFeedbackButton}>
                         <Text style={styles.fullFeedbackButtonText}>反馈地点信息</Text>
                       </Pressable>
-                      <Text style={styles.fullFeedbackHint}>
-                        该地点由平台整理维护，欢迎反馈修正；商家认领后可支持信息更新。
-                      </Text>
                     </View>
                   </View>
 
@@ -2450,12 +2744,27 @@ export default function TabOneScreen() {
                       </View>
                     </View>
                   ) : null}
+                  {isAdminSystemSpot ? (
+                    <View style={styles.ownerActionsSection}>
+                      <Text style={styles.ownerActionsTitle}>系统地点管理</Text>
+                      <View style={styles.ownerActionsGrid}>
+                        <Pressable onPress={handleEditSpot} style={styles.ownerActionButton}>
+                          <Text style={styles.ownerActionButtonText}>编辑地点</Text>
+                        </Pressable>
+                        <Pressable onPress={openSystemPhotoManager} style={styles.ownerActionButton}>
+                          <Text style={styles.ownerActionButtonText}>管理图片</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={handleDeleteSystemSpot}
+                          style={[styles.ownerActionButton, styles.ownerDeleteButton]}>
+                          <Text style={[styles.ownerActionButtonText, styles.ownerDeleteButtonText]}>
+                            删除地点
+                          </Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ) : null}
 
-                  {/* Comments placeholder */}
-                  <View style={styles.fullPanelDivider} />
-                  <View style={styles.fullCommentsPlaceholder}>
-                    <Text style={styles.fullCommentsPlaceholderText}>精选评论区（后面再做）</Text>
-                  </View>
 
                 </View>
               </View>
@@ -2465,19 +2774,118 @@ export default function TabOneScreen() {
         </Animated.View>
       ) : null}
 
+      <Modal
+        transparent
+        animationType="slide"
+        visible={isPhotoManagerVisible && isAdminSystemSpot}
+        onRequestClose={closeSystemPhotoManager}>
+        <View style={styles.photoManagerBackdrop}>
+          <View style={styles.photoManagerSheet}>
+            <View style={styles.photoManagerHeader}>
+              <Text style={styles.photoManagerTitle}>管理图片</Text>
+              <Pressable
+                onPress={closeSystemPhotoManager}
+                disabled={isManagingSystemPhotos}
+                style={styles.photoManagerCloseButton}>
+                <Ionicons name="close" size={16} color="#4A4A4A" />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              style={styles.photoManagerScroll}
+              contentContainerStyle={styles.photoManagerContent}
+              showsVerticalScrollIndicator={false}>
+              {selectedSpotPhotoUris.length === 0 ? (
+                <View style={styles.photoManagerEmptyCard}>
+                  <Text style={styles.photoManagerEmptyText}>暂无图片，先上传一张封面图</Text>
+                </View>
+              ) : (
+                selectedSpotPhotoUris.slice(0, MAX_SYSTEM_SPOT_PHOTOS).map((uri, index) => (
+                  <View key={`${selectedSpot?.id ?? 'spot'}-${uri}-${index}`} style={styles.photoManagerCard}>
+                    <Image source={{ uri }} style={styles.photoManagerImage} />
+                    <View style={styles.photoManagerActions}>
+                      <Pressable
+                        disabled={isManagingSystemPhotos || index === 0}
+                        onPress={() => handleSetSystemSpotCover(index)}
+                        style={[
+                          styles.photoManagerActionButton,
+                          index === 0 ? styles.photoManagerActionButtonDisabled : null,
+                        ]}>
+                        <Text
+                          style={[
+                            styles.photoManagerActionText,
+                            index === 0 ? styles.photoManagerActionTextDisabled : null,
+                          ]}>
+                          {index === 0 ? '当前封面' : '设为封面'}
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        disabled={isManagingSystemPhotos}
+                        onPress={() => handleReplaceSystemSpotPhoto(index)}
+                        style={styles.photoManagerActionButton}>
+                        <Text style={styles.photoManagerActionText}>替换</Text>
+                      </Pressable>
+                      <Pressable
+                        disabled={isManagingSystemPhotos}
+                        onPress={() => handleDeleteSystemSpotPhoto(index)}
+                        style={[styles.photoManagerActionButton, styles.photoManagerDeleteButton]}>
+                        <Text style={[styles.photoManagerActionText, styles.photoManagerDeleteText]}>
+                          删除
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+
+            <View style={styles.photoManagerFooter}>
+              <Text style={styles.photoManagerCountText}>
+                {selectedSpotPhotoUris.length}/{MAX_SYSTEM_SPOT_PHOTOS}
+              </Text>
+              <Pressable
+                disabled={
+                  isManagingSystemPhotos || selectedSpotPhotoUris.length >= MAX_SYSTEM_SPOT_PHOTOS
+                }
+                onPress={handleAddSystemSpotPhoto}
+                style={[
+                  styles.photoManagerAddButton,
+                  isManagingSystemPhotos || selectedSpotPhotoUris.length >= MAX_SYSTEM_SPOT_PHOTOS
+                    ? styles.photoManagerActionButtonDisabled
+                    : null,
+                ]}>
+                <Text style={styles.photoManagerAddButtonText}>
+                  {isManagingSystemPhotos ? '处理中…' : '新增图片'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <SpotFormModal
         visible={isCreateModalVisible}
         modalMode={modalMode}
+        isAdminMode={ADMIN_MODE_ENABLED}
+        showSpotTypeField={
+          modalMode === 'create'
+            ? ADMIN_MODE_ENABLED
+            : ADMIN_MODE_ENABLED && editingSpotSource === 'system'
+        }
         formValues={formValues}
         pendingFormattedAddress={pendingFormattedAddress}
         isResolvingPendingAddress={isResolvingPendingAddress}
         shouldUseReadonlyDistrict={shouldUseReadonlyDistrict}
         formError={formError}
         pendingCoords={pendingCoords}
+        isSubmitting={isSubmittingSpot}
         onClose={closeCreateModal}
         onSubmit={handleSubmitSpot}
         onUpdateField={updateFormValue}
         onToggleTag={toggleTag}
+        createCoverPhotoUri={createCoverImage?.uri ?? null}
+        onPickCreateCoverPhoto={handlePickCreateCoverPhoto}
+        onRemoveCreateCoverPhoto={handleRemoveCreateCoverPhoto}
       />
 
       {/* ── Map Guide (Layer 3 onboarding) ──────────────────────────── */}
@@ -2926,24 +3334,14 @@ const styles = StyleSheet.create({
   collapsedPreviewImage: {
     width: 103,
     height: 68,
-    borderRadius: 0,
-    backgroundColor: '#D9D9D9',
+    borderRadius: 10,
+    backgroundColor: '#DCCAB4',
   },
   collapsedPreviewPlaceholder: {
     width: 103,
     height: 68,
-    borderRadius: 0,
-    backgroundColor: 'rgba(217,217,217,1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-  },
-  collapsedPreviewPlaceholderText: {
-    color: '#404040',
-    fontSize: 12,
-    fontWeight: '600',
-    lineHeight: 16,
-    textAlign: 'center',
+    borderRadius: 10,
+    backgroundColor: '#DCCAB4',
   },
   halfContent: {
     width: 342,
@@ -3037,15 +3435,15 @@ const styles = StyleSheet.create({
     height: 19,
   },
   halfActionCluster: {
-    width: 110,
-    height: 26,
+    width: 116,
+    height: 32,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   halfActionButton: {
-    width: 26,
-    height: 26,
+    width: 32,
+    height: 32,
     borderRadius: 999,
     backgroundColor: '#ED8422',
     alignItems: 'center',
@@ -3196,29 +3594,168 @@ const styles = StyleSheet.create({
   ownerDeleteButtonText: {
     color: '#B34747',
   },
-  halfPhotosRow: {
-    gap: 6,
+  photoManagerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(11, 19, 36, 0.4)',
+    justifyContent: 'flex-end',
   },
-  halfPhoto: {
-    width: 167,
-    height: 105,
-    resizeMode: 'cover',
-    backgroundColor: '#D9D9D9',
+  photoManagerSheet: {
+    maxHeight: '78%',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    backgroundColor: '#FFFEFF',
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 20,
+    gap: 10,
   },
-  halfPhotoPlaceholder: {
-    width: 167,
-    height: 105,
-    backgroundColor: 'rgba(217,217,217,1)',
+  photoManagerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  photoManagerTitle: {
+    color: '#3F3A33',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  photoManagerCloseButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    backgroundColor: '#F5F2EE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoManagerScroll: {
+    flexGrow: 0,
+  },
+  photoManagerContent: {
+    gap: 10,
+    paddingBottom: 4,
+  },
+  photoManagerEmptyCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ECE8E2',
+    backgroundColor: '#FFFDFC',
+    paddingHorizontal: 12,
+    paddingVertical: 18,
+  },
+  photoManagerEmptyText: {
+    color: '#8A8176',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  photoManagerCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ECE8E2',
+    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
+  },
+  photoManagerImage: {
+    width: '100%',
+    height: 150,
+    backgroundColor: '#DCCAB4',
+  },
+  photoManagerActions: {
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  photoManagerActionButton: {
+    minWidth: 72,
+    height: 30,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#DAD4CD',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  photoManagerActionButtonDisabled: {
+    opacity: 0.5,
+  },
+  photoManagerActionText: {
+    color: '#3F3A33',
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 14,
+  },
+  photoManagerActionTextDisabled: {
+    color: '#8B958D',
+  },
+  photoManagerDeleteButton: {
+    borderColor: '#F1C8C8',
+    backgroundColor: '#FFF6F6',
+  },
+  photoManagerDeleteText: {
+    color: '#B34747',
+  },
+  photoManagerFooter: {
+    borderTopWidth: 1,
+    borderTopColor: '#F0ECE7',
+    paddingTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  photoManagerCountText: {
+    color: '#8A8176',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  photoManagerAddButton: {
+    minWidth: 92,
+    height: 34,
+    borderRadius: 999,
+    backgroundColor: '#ED8422',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 12,
   },
-  halfPhotoPlaceholderText: {
-    color: '#404040',
+  photoManagerAddButtonText: {
+    color: '#FFFFFF',
     fontSize: 12,
-    lineHeight: 16,
+    fontWeight: '700',
+  },
+  halfPhotosRow: {
+    gap: 6,
+  },
+  halfPhotoCard: {
+    width: 167,
+    height: 105,
+    borderRadius: 10,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  halfPhoto: {
+    width: 167,
+    height: 105,
+    borderRadius: 10,
+    resizeMode: 'cover',
+    backgroundColor: '#DCCAB4',
+  },
+  halfPhotoEmptyState: {
+    width: 167,
+    height: 105,
+    borderRadius: 10,
+    backgroundColor: '#DCCAB4',
+    borderWidth: 1,
+    borderColor: '#C9B9A7',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  halfPhotoEmptyStateText: {
+    color: '#746C63',
+    fontSize: 11,
     fontWeight: '600',
-    textAlign: 'center',
   },
   halfDescriptionSection: {
     width: 342,
@@ -3305,12 +3842,14 @@ const styles = StyleSheet.create({
   halfFeedbackButton: {
     alignSelf: 'flex-start',
     borderRadius: 999,
-    backgroundColor: '#2F2F2F',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    backgroundColor: '#F0EAE2',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: '#E2D4C4',
   },
   halfFeedbackButtonText: {
-    color: '#FFFFFF',
+    color: '#6B5A48',
     fontSize: 11,
     fontWeight: '700',
     lineHeight: 13,
@@ -3329,24 +3868,14 @@ const styles = StyleSheet.create({
   },
   fullTopPhoto: {
     width: '100%',
-    height: 280,
+    height: 360,
     resizeMode: 'cover',
-    backgroundColor: '#D9D9D9',
+    backgroundColor: '#DCCAB4',
   },
   fullTopPhotoPlaceholder: {
     width: '100%',
-    height: 280,
-    backgroundColor: 'rgba(217,217,217,1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  fullTopPhotoPlaceholderText: {
-    color: '#434343',
-    fontSize: 14,
-    fontWeight: '600',
-    lineHeight: 19,
-    textAlign: 'center',
+    height: 360,
+    backgroundColor: '#DCCAB4',
   },
   fullDetailPanel: {
     marginTop: -20,
@@ -3522,7 +4051,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row' as const,
     alignItems: 'flex-start' as const,
     justifyContent: 'space-around' as const,
-    backgroundColor: '#F7F5F2',
+    backgroundColor: '#F5EEE4',
     borderRadius: 14,
     paddingVertical: 14,
     paddingHorizontal: 4,

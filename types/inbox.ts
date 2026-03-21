@@ -1,5 +1,5 @@
 export type FeedbackType = 'spot' | 'activity' | 'product' | 'bug';
-export type InboxSourceType = 'feedback' | 'platform';
+export type InboxSourceType = 'feedback' | 'platform' | 'review';
 export type InboxContextType = 'spot' | 'activity' | 'none';
 export type FeedbackStatus = 'received' | 'in_progress' | 'replied';
 export type PlatformMessageType = 'activity' | 'release' | 'reminder';
@@ -46,4 +46,15 @@ export type PlatformInboxMessage = {
   target?: PlatformMessageTarget;
 };
 
-export type InboxItem = FeedbackRecord | PlatformInboxMessage;
+export type SpotReviewNotification = {
+  id: string;
+  sourceType: 'review';
+  reviewResult: 'approved' | 'rejected';
+  title: string;
+  content: string;
+  createdAt: string;
+  spotId: string;
+  spotName: string;
+};
+
+export type InboxItem = FeedbackRecord | PlatformInboxMessage | SpotReviewNotification;

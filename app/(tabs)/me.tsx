@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useRef } from 'react';
 import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -60,11 +61,10 @@ export default function MeScreen() {
   return (
     <View style={styles.container}>
       {/*
-        白色背景层：从 hero 底部延伸到屏幕底部。
-        ScrollView 透明，底部 overscroll 看到这层白色；
-        顶部 overscroll 穿透到 container 的橙色。
+        底部白色层：从 heroHeight 到屏幕底部，底部 overscroll 时露出暖白色。
+        顶部 overscroll 穿透到 container 橙色。
       */}
-      <View style={[styles.bottomWhiteBg, { top: heroHeight }]} />
+      <View style={[styles.bottomWarmBg, { top: heroHeight }]} />
 
       <ScrollView
         alwaysBounceVertical
@@ -72,8 +72,16 @@ export default function MeScreen() {
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 108 }]}>
 
-        {/* Hero */}
+        {/* Hero — soft gradient overlay gives warmth & depth */}
         <View style={[styles.hero, { height: heroHeight }]}>
+          <LinearGradient
+            colors={['#F59528', '#E07215', '#D46C10']}
+            start={{ x: 0.05, y: 0 }}
+            end={{ x: 0.95, y: 1 }}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+
           <Pressable
             onPress={() => router.push('/inbox')}
             style={[styles.messageButton, { top: messageButtonTop }]}>
@@ -88,7 +96,7 @@ export default function MeScreen() {
           <DogHero width={130} height={170} style={styles.heroDog} />
         </View>
 
-        {/* White Content Sheet */}
+        {/* Warm white content sheet */}
         <View style={styles.contentSheet}>
           <View style={styles.sheetContent}>
 
@@ -106,7 +114,8 @@ export default function MeScreen() {
               <Pressable
                 onPressIn={() => pressIn(spotsAnim)}
                 onPressOut={() => pressOut(spotsAnim)}
-                onPress={() => router.push('/my-spots')}>
+                onPress={() => router.push('/my-spots')}
+                style={styles.statPressable}>
                 <Animated.View style={[styles.statBlock, getStatCardStyle(spotsAnim)]}>
                   <Text style={styles.statNumber}>{userSpots.length}</Text>
                   <Text style={styles.statLabel}>我的地点</Text>
@@ -115,7 +124,8 @@ export default function MeScreen() {
               <Pressable
                 onPressIn={() => pressIn(favAnim)}
                 onPressOut={() => pressOut(favAnim)}
-                onPress={() => router.push('/my-favorites')}>
+                onPress={() => router.push('/my-favorites')}
+                style={styles.statPressable}>
                 <Animated.View style={[styles.statBlock, getStatCardStyle(favAnim)]}>
                   <Text style={styles.statNumber}>{favoriteSpots.length}</Text>
                   <Text style={styles.statLabel}>我的收藏</Text>
@@ -124,10 +134,10 @@ export default function MeScreen() {
             </View>
 
             {/* Achievement Section */}
-            <View style={styles.achievementSection}>
+            <View style={styles.achievementCard}>
               <View style={styles.achievementHeader}>
                 <Text style={styles.achievementTitle}>勋章</Text>
-                <Ionicons name="chevron-forward" size={13} color="#404040" />
+                <Ionicons name="chevron-forward" size={13} color="#A89070" />
               </View>
               <View style={styles.badgeRow}>
                 {[0, 1, 2, 3].map((i) => (
@@ -137,17 +147,22 @@ export default function MeScreen() {
             </View>
 
             {/* Function Section */}
-            <View style={styles.functionSection}>
+            <View style={styles.functionCard}>
               <Text style={styles.functionTitle}>快捷入口</Text>
               {[
                 { key: 'settings', label: '设置', onPress: () => router.push('/settings') },
                 { key: 'feedback', label: '意见反馈', onPress: () => router.push('/report/location') },
                 { key: 'about', label: '关于 PetMap', onPress: () => router.push('/about') },
-              ].map((item) => (
-                <Pressable key={item.key} style={styles.functionItem} onPress={item.onPress}>
-                  <Text style={styles.functionItemLabel}>{item.label}</Text>
-                  <Ionicons name="chevron-forward" size={13} color="#404040" />
-                </Pressable>
+              ].map((item, index, arr) => (
+                <View key={item.key}>
+                  <Pressable
+                    style={({ pressed }) => [styles.functionItem, pressed && styles.functionItemPressed]}
+                    onPress={item.onPress}>
+                    <Text style={styles.functionItemLabel}>{item.label}</Text>
+                    <Ionicons name="chevron-forward" size={14} color="#C4A882" />
+                  </Pressable>
+                  {index < arr.length - 1 ? <View style={styles.functionDivider} /> : null}
+                </View>
               ))}
             </View>
 
@@ -159,20 +174,19 @@ export default function MeScreen() {
 }
 
 const styles = StyleSheet.create({
-  // 橙色底层：顶部 overscroll 时透过透明 scrollView 露出此颜色
+  // 顶部 overscroll 露出橙色底层
   container: {
     flex: 1,
     backgroundColor: '#ED8422',
   },
-  // 白色层：从 heroHeight 到底部，底部 overscroll 时露出此颜色
-  bottomWhiteBg: {
+  // 底部 overscroll 露出暖白
+  bottomWarmBg: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#FFFEFF',
+    backgroundColor: '#FFF8F2',
   },
-  // 透明，让两端 overscroll 分别看到对应底层颜色
   scrollView: {
     flex: 1,
     backgroundColor: 'transparent',
@@ -190,10 +204,12 @@ const styles = StyleSheet.create({
   messageButton: {
     position: 'absolute',
     right: 16,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 3,
@@ -205,10 +221,11 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   heroEyebrow: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-    lineHeight: 22,
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 20,
+    letterSpacing: 0.3,
   },
   heroTitle: {
     color: '#FFFFFF',
@@ -223,29 +240,29 @@ const styles = StyleSheet.create({
     zIndex: 0,
   },
 
-  // ── White Sheet ───────────────────────────────────────────
+  // ── Warm White Sheet ──────────────────────────────────────
   contentSheet: {
     flex: 1,
     minHeight: 560,
-    backgroundColor: '#FFFEFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: '#FFF8F2',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     zIndex: 2,
-    paddingTop: 24,
+    paddingTop: 26,
     paddingHorizontal: 20,
     paddingBottom: 89,
   },
   sheetContent: {
-    gap: 17,
+    gap: 16,
   },
 
   // ── User Profile Block ────────────────────────────────────
   profileBlock: {
     height: 91,
-    borderRadius: 20,
-    borderWidth: 4,
-    borderColor: '#ED8422',
-    backgroundColor: '#FFFEFF',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(237,132,34,0.2)',
+    backgroundColor: '#FFFFFF',
     paddingTop: 10,
     paddingBottom: 9,
     paddingLeft: 12,
@@ -253,25 +270,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    shadowColor: '#C97010',
+    shadowOpacity: 0.12,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 18,
+    elevation: 4,
   },
   avatar: {
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: '#D9D9D9',
+    backgroundColor: '#EAD9C4',
     flexShrink: 0,
   },
   userInfo: {
     gap: 5,
   },
   userId: {
-    color: '#404040',
+    color: '#1A1A1A',
     fontSize: 20,
     fontWeight: '700',
     lineHeight: 28,
   },
   userSubtitle: {
-    color: '#404040',
+    color: '#8A7060',
     fontSize: 12,
     fontWeight: '400',
     lineHeight: 16,
@@ -283,39 +305,51 @@ const styles = StyleSheet.create({
     gap: 14,
     justifyContent: 'center',
   },
+  statPressable: {
+    flex: 1,
+  },
   statBlock: {
-    width: 150,
-    height: 75,
-    borderRadius: 20,
-    borderWidth: 4,
-    borderColor: '#ED8422',
-    backgroundColor: '#FFFEFF',
+    height: 80,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(237,132,34,0.18)',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    // Subtle shadow — complements the press-down animation
-    shadowColor: '#ED8422',
-    shadowOpacity: 0.22,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 6,
+    shadowColor: '#C97010',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 5 },
+    shadowRadius: 14,
     elevation: 3,
   },
   statNumber: {
-    color: '#404040',
+    color: '#1A1A1A',
     fontSize: 30,
-    fontWeight: '700',
+    fontWeight: '800',
     lineHeight: 36,
   },
   statLabel: {
-    color: '#404040',
+    color: '#8A7060',
     fontSize: 12,
-    fontWeight: '400',
+    fontWeight: '500',
     lineHeight: 16,
   },
 
-  // ── Achievement Section ───────────────────────────────────
-  achievementSection: {
-    gap: 8,
+  // ── Achievement Card ──────────────────────────────────────
+  achievementCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    gap: 12,
+    shadowColor: '#C97010',
+    shadowOpacity: 0.07,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 2,
   },
   achievementHeader: {
     flexDirection: 'row',
@@ -323,42 +357,63 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   achievementTitle: {
-    color: '#404040',
+    color: '#1A1A1A',
     fontSize: 14,
     fontWeight: '700',
     lineHeight: 22,
   },
   badgeRow: {
     flexDirection: 'row',
-    gap: 16,
-  },
-  badgePlaceholder: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#D9D9D9',
-  },
-
-  // ── Function Section ──────────────────────────────────────
-  functionSection: {
     gap: 14,
   },
+  badgePlaceholder: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: '#F0E6D8',
+  },
+
+  // ── Function Card ─────────────────────────────────────────
+  functionCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    backgroundColor: '#FFFFFF',
+    paddingTop: 14,
+    paddingHorizontal: 16,
+    paddingBottom: 4,
+    gap: 0,
+    shadowColor: '#C97010',
+    shadowOpacity: 0.07,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 2,
+  },
   functionTitle: {
-    color: '#404040',
-    fontSize: 14,
+    color: '#1A1A1A',
+    fontSize: 13,
     fontWeight: '700',
-    lineHeight: 22,
+    lineHeight: 20,
+    marginBottom: 6,
+    letterSpacing: 0.2,
   },
   functionItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    minHeight: 22,
+    paddingVertical: 14,
+  },
+  functionItemPressed: {
+    opacity: 0.6,
   },
   functionItemLabel: {
-    color: '#404040',
+    color: '#1A1A1A',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '600',
     lineHeight: 22,
+  },
+  functionDivider: {
+    height: 1,
+    backgroundColor: 'rgba(237,132,34,0.1)',
   },
 });

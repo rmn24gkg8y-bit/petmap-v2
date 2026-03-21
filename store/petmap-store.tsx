@@ -4,33 +4,38 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
 import {
-  fetchSystemSpotsFromCloud,
+  fetchSpotsFromSupabase,
   getFallbackSystemSpots,
 } from '@/repo/cloudSpotsRepo';
 import { PLATFORM_INBOX_MESSAGES } from '@/constants/inbox';
 import {
-  hasSpotSubmissionEndpointConfigured,
-  submitSpotForReviewToCloud,
+  fetchSubmissionReviewStatusesBySpotIds,
+  submitSpotToSupabase,
 } from '@/repo/cloudSubmissionRepo';
 import {
   loadFormattedAddressBySpotId,
   loadFeedbackRecords,
   loadFavoriteIds,
   loadInboxReadAtByMessageId,
+  loadNotifiedReviewStateBySpotId,
   loadRecentViewedIds,
+  loadReviewNotifications,
   loadUserCreatedSpots,
   saveFormattedAddressBySpotId,
   saveFeedbackRecords,
   saveFavoriteIds,
   saveInboxReadAtByMessageId,
+  saveNotifiedReviewStateBySpotId,
   saveRecentViewedIds,
+  saveReviewNotifications,
   saveUserCreatedSpots,
 } from '@/repo/storageRepo';
-import type { FeedbackRecord, InboxItem } from '@/types/inbox';
+import type { FeedbackRecord, InboxItem, SpotReviewNotification } from '@/types/inbox';
 import type { Spot } from '@/types/spot';
 import { getDistanceMeters } from '@/utils/distance';
 
@@ -90,6 +95,7 @@ type PetMapStoreValue = {
   inboxItems: InboxItem[];
   hasUnreadInboxItems: boolean;
   addSpot: (spot: Spot) => void;
+  addSystemSpot: (spot: Spot) => void;
   updateSpot: (spot: Spot) => void;
   removeSpot: (id: string) => void;
   addSpotPhoto: (spotId: string, uri: string) => void;
@@ -120,6 +126,7 @@ type PetMapStoreValue = {
   addFeedbackRecord: (
     record: Omit<FeedbackRecord, 'id' | 'sourceType' | 'createdAt' | 'status' | 'reply'>
   ) => void;
+  syncPendingSpotReviews: (opts?: { force?: boolean }) => Promise<void>;
 };
 
 const PetMapContext = createContext<PetMapStoreValue | undefined>(undefined);
@@ -133,6 +140,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
     {}
   );
   const [feedbackRecords, setFeedbackRecords] = useState<FeedbackRecord[]>([]);
+  const [reviewNotifications, setReviewNotifications] = useState<SpotReviewNotification[]>([]);
   const [inboxReadAtByMessageId, setInboxReadAtByMessageId] = useState<Record<string, string>>({});
   const [selectedSpotId, setSelectedSpotId] = useState<string | null>(null);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
@@ -146,12 +154,16 @@ export function PetMapProvider({ children }: PropsWithChildren) {
   const [userLoc, setUserLoc] = useState<UserLoc>(null);
   const [hasHydratedStorage, setHasHydratedStorage] = useState(false);
 
+  // Guards for syncPendingSpotReviews: prevent concurrent calls and rapid re-firing.
+  const isSyncingReviewsRef = useRef(false);
+  const lastSyncReviewsAtRef = useRef(0);
+
   useEffect(() => {
     let isMounted = true;
 
     async function hydrateSystemSpots() {
       try {
-        const remoteSpots = await fetchSystemSpotsFromCloud();
+        const remoteSpots = await fetchSpotsFromSupabase();
 
         if (!isMounted) {
           return;
@@ -191,6 +203,8 @@ export function PetMapProvider({ children }: PropsWithChildren) {
         storedFormattedAddressBySpotId,
         storedFeedbackRecords,
         storedInboxReadAtByMessageId,
+        storedReviewNotifications,
+        storedNotifiedReviewStateBySpotId,
       ] = await Promise.all([
         loadFavoriteIds(),
         loadRecentViewedIds(),
@@ -198,33 +212,108 @@ export function PetMapProvider({ children }: PropsWithChildren) {
         loadFormattedAddressBySpotId(),
         loadFeedbackRecords(),
         loadInboxReadAtByMessageId(),
+        loadReviewNotifications(),
+        loadNotifiedReviewStateBySpotId(),
       ]);
 
       if (!isMounted) {
         return;
       }
 
-      const formattedAddressKeys = Object.keys(storedFormattedAddressBySpotId);
-      console.log(
-        '[PetMapStore][hydrate] loaded formattedAddressBySpotId keys:',
-        formattedAddressKeys.length,
-        formattedAddressKeys
+      // Step 1: normalize submissionStatus for legacy spots
+      let normalizedUserSpots = storedUserCreatedSpots.map((spot) =>
+        spot.source === 'user' && spot.submissionStatus === undefined
+          ? { ...spot, submissionStatus: 'local' as const }
+          : spot
       );
+
+      // Step 2: sync review statuses from Supabase for pending_review spots
+      const pendingSpotIds = normalizedUserSpots
+        .filter((s) => s.submissionStatus === 'pending_review')
+        .map((s) => s.id);
+
+      let pendingReviewNotifications = storedReviewNotifications;
+
+      if (pendingSpotIds.length > 0) {
+        try {
+          const reviewStatuses = await fetchSubmissionReviewStatusesBySpotIds(pendingSpotIds);
+
+          if (!isMounted) {
+            return;
+          }
+
+          const statusMap = new Map(reviewStatuses.map((r) => [r.spot_id, r]));
+          const newNotifiedState = { ...storedNotifiedReviewStateBySpotId };
+          const newNotifications: SpotReviewNotification[] = [];
+
+          normalizedUserSpots = normalizedUserSpots.map((spot) => {
+            const entry = statusMap.get(spot.id);
+            const rs = entry?.review_status;
+
+            if (!rs || rs === 'pending') return spot;
+
+            if (rs === 'approved') {
+              if (newNotifiedState[spot.id] !== 'approved') {
+                newNotifiedState[spot.id] = 'approved';
+                newNotifications.push({
+                  id: `review-${spot.id}-approved`,
+                  sourceType: 'review',
+                  reviewResult: 'approved',
+                  title: '地点审核已通过',
+                  content: `你提交的地点「${spot.name}」已通过审核，现已发布到地图。`,
+                  createdAt: new Date().toISOString(),
+                  spotId: spot.id,
+                  spotName: spot.name,
+                });
+              }
+              return { ...spot, verified: true, reviewNote: undefined };
+            }
+
+            // rejected → reset to local so user can edit and re-submit
+            const reviewNote = entry?.review_note ?? undefined;
+            if (newNotifiedState[spot.id] !== 'rejected') {
+              newNotifiedState[spot.id] = 'rejected';
+              const noteText = reviewNote
+                ? `你提交的地点「${spot.name}」未通过审核：${reviewNote}`
+                : `你提交的地点「${spot.name}」未通过审核，请补充信息后重新提交。`;
+              newNotifications.push({
+                id: `review-${spot.id}-rejected`,
+                sourceType: 'review',
+                reviewResult: 'rejected',
+                title: '地点审核未通过',
+                content: noteText,
+                createdAt: new Date().toISOString(),
+                spotId: spot.id,
+                spotName: spot.name,
+              });
+            }
+            return {
+              ...spot,
+              submissionStatus: 'local' as const,
+              verified: false,
+              reviewNote,
+            };
+          });
+
+          if (newNotifications.length > 0) {
+            pendingReviewNotifications = [...newNotifications, ...storedReviewNotifications];
+            saveReviewNotifications(pendingReviewNotifications);
+            saveNotifiedReviewStateBySpotId(newNotifiedState);
+          }
+        } catch (err) {
+          console.error('[PetMapStore][hydrate] review status sync failed:', err);
+        }
+      }
 
       setFavoriteIds(storedFavoriteIds);
       setRecentViewedIds(storedRecentViewedIds);
-      setUserCreatedSpots(
-        storedUserCreatedSpots.map((spot) =>
-          spot.source === 'user' && spot.submissionStatus === undefined
-            ? { ...spot, submissionStatus: 'local' }
-            : spot
-        )
-      );
+      setUserCreatedSpots(normalizedUserSpots);
       setFormattedAddressBySpotId((current) => ({
         ...storedFormattedAddressBySpotId,
         ...current,
       }));
       setFeedbackRecords(storedFeedbackRecords);
+      setReviewNotifications(pendingReviewNotifications);
       setInboxReadAtByMessageId(storedInboxReadAtByMessageId);
       setHasHydratedStorage(true);
     }
@@ -265,12 +354,6 @@ export function PetMapProvider({ children }: PropsWithChildren) {
       return;
     }
 
-    const formattedAddressKeys = Object.keys(formattedAddressBySpotId);
-    console.log(
-      '[PetMapStore][persist] save formattedAddressBySpotId keys:',
-      formattedAddressKeys.length,
-      formattedAddressKeys
-    );
     saveFormattedAddressBySpotId(formattedAddressBySpotId);
   }, [formattedAddressBySpotId, hasHydratedStorage]);
 
@@ -291,22 +374,34 @@ export function PetMapProvider({ children }: PropsWithChildren) {
   }, [hasHydratedStorage, inboxReadAtByMessageId]);
 
   const value = useMemo(() => {
-    const systemSpotHitCount = systemSpots.filter(
-      (spot) => typeof formattedAddressBySpotId[spot.id] === 'string'
-    ).length;
-    console.log('[PetMapStore][compose] system spot cache hits:', systemSpotHitCount);
+    // IDs present in the authoritative system spots list
+    const systemSpotIds = new Set(systemSpots.map((s) => s.id));
+
+    // User spots whose IDs have been promoted into systemSpots (= approved / published)
+    const publishedUserSpotIds = new Set(
+      userCreatedSpots.filter((s) => systemSpotIds.has(s.id)).map((s) => s.id)
+    );
 
     const spots = [
-      ...systemSpots.map((spot) =>
-        formattedAddressBySpotId[spot.id]
-          ? { ...spot, formattedAddress: formattedAddressBySpotId[spot.id] }
-          : spot
-      ),
-      ...userCreatedSpots.map((spot) =>
-        spot.formattedAddress || !formattedAddressBySpotId[spot.id]
-          ? spot
-          : { ...spot, formattedAddress: formattedAddressBySpotId[spot.id] }
-      ),
+      // System spots: exclude IDs that are also in userCreatedSpots to avoid duplicates
+      ...systemSpots
+        .filter((spot) => !publishedUserSpotIds.has(spot.id))
+        .map((spot) =>
+          formattedAddressBySpotId[spot.id]
+            ? { ...spot, formattedAddress: formattedAddressBySpotId[spot.id] }
+            : spot
+        ),
+      // User spots: if already in systemSpots, mark verified so My Spots shows "已发布"
+      ...userCreatedSpots.map((spot) => {
+        const withAddress =
+          spot.formattedAddress || !formattedAddressBySpotId[spot.id]
+            ? spot
+            : { ...spot, formattedAddress: formattedAddressBySpotId[spot.id] };
+
+        return publishedUserSpotIds.has(spot.id)
+          ? { ...withAddress, verified: true }
+          : withAddress;
+      }),
     ].map((spot) => (spot.spotType ? spot : { ...spot, spotType: 'other' as const }));
     const selectedSpot = spots.find((spot) => spot.id === selectedSpotId) ?? null;
     const userSpots = spots.filter((spot) => spot.source === 'user');
@@ -373,7 +468,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
 
       return b.votes - a.votes;
     });
-    const inboxItems = [...feedbackRecords, ...PLATFORM_INBOX_MESSAGES].sort(
+    const inboxItems = [...feedbackRecords, ...reviewNotifications, ...PLATFORM_INBOX_MESSAGES].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
     const isInboxItemRead = (id: string) => typeof inboxReadAtByMessageId[id] === 'string';
@@ -407,8 +502,14 @@ export function PetMapProvider({ children }: PropsWithChildren) {
       addSpot: (spot: Spot) => {
         setUserCreatedSpots((current) => [...current, spot]);
       },
+      addSystemSpot: (spot: Spot) => {
+        setSystemSpots((current) => [spot, ...current]);
+      },
       updateSpot: (spot: Spot) => {
-        if (spot.source !== 'user') {
+        if (spot.source === 'system') {
+          setSystemSpots((current) =>
+            current.map((item) => (item.id === spot.id ? spot : item))
+          );
           return;
         }
 
@@ -417,10 +518,19 @@ export function PetMapProvider({ children }: PropsWithChildren) {
         );
       },
       removeSpot: (id: string) => {
+        setSystemSpots((current) => current.filter((spot) => spot.id !== id));
         setUserCreatedSpots((current) => current.filter((spot) => spot.id !== id));
         setSelectedSpotId((current) => (current === id ? null : current));
         setFavoriteIds((current) => current.filter((item) => item !== id));
         setRecentViewedIds((current) => current.filter((item) => item !== id));
+        setFormattedAddressBySpotId((current) => {
+          if (!current[id]) {
+            return current;
+          }
+          const next = { ...current };
+          delete next[id];
+          return next;
+        });
       },
       addSpotPhoto: (spotId: string, uri: string) => {
         const normalizedUri = uri.trim();
@@ -466,17 +576,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
             return current;
           }
 
-          const nextMap = { ...current, [id]: nextValue };
-          const nextKeys = Object.keys(nextMap);
-          console.log(
-            '[PetMapStore][setSpotFormattedAddress]',
-            id,
-            nextValue,
-            'keys:',
-            nextKeys.length
-          );
-
-          return nextMap;
+          return { ...current, [id]: nextValue };
         });
         setUserCreatedSpots((current) =>
           current.map((spot) => (spot.id === id ? { ...spot, formattedAddress: nextValue } : spot))
@@ -497,35 +597,21 @@ export function PetMapProvider({ children }: PropsWithChildren) {
           };
         }
 
-        if (!hasSpotSubmissionEndpointConfigured()) {
-          setUserCreatedSpots((current) =>
-            current.map((spot) =>
-              spot.id === id &&
-              spot.source === 'user' &&
-              (spot.submissionStatus === undefined || spot.submissionStatus === 'local')
-                ? { ...spot, submissionStatus: 'pending_review' }
-                : spot
-            )
-          );
-
-          return { success: true, mode: 'local' as const };
-        }
-
         try {
-          await submitSpotForReviewToCloud(targetSpot);
+          await submitSpotToSupabase(targetSpot);
           setUserCreatedSpots((current) =>
             current.map((spot) =>
               spot.id === id &&
               spot.source === 'user' &&
               (spot.submissionStatus === undefined || spot.submissionStatus === 'local')
-                ? { ...spot, submissionStatus: 'pending_review' }
+                ? { ...spot, submissionStatus: 'pending_review', reviewNote: undefined }
                 : spot
             )
           );
 
           return { success: true, mode: 'cloud' as const };
         } catch (error) {
-          console.warn('[PetMapStore][submitSpotForReview] failed:', error);
+          console.error('[PetMapStore][submitSpotForReview] Supabase error:', error);
 
           return {
             success: false,
@@ -621,6 +707,61 @@ export function PetMapProvider({ children }: PropsWithChildren) {
           ...current,
         ]);
       },
+      syncPendingSpotReviews: async (opts?: { force?: boolean }) => {
+        // In-flight guard: prevent concurrent calls regardless of force flag.
+        if (isSyncingReviewsRef.current) {
+          return;
+        }
+
+        // Cooldown: skip if called within 30s, unless force=true (manual pull-to-refresh).
+        const now = Date.now();
+        if (!opts?.force && now - lastSyncReviewsAtRef.current < 30_000) {
+          return;
+        }
+
+        const pendingIds = userCreatedSpots
+          .filter((s) => s.submissionStatus === 'pending_review')
+          .map((s) => s.id);
+
+        if (pendingIds.length === 0) {
+          return;
+        }
+
+        isSyncingReviewsRef.current = true;
+        lastSyncReviewsAtRef.current = now;
+
+        try {
+          const statuses = await fetchSubmissionReviewStatusesBySpotIds(pendingIds);
+          const statusMap = new Map(statuses.map((r) => [r.spot_id, r]));
+
+          setUserCreatedSpots((current) =>
+            current.map((spot) => {
+              const entry = statusMap.get(spot.id);
+              const rs = entry?.review_status;
+
+              if (!rs || rs === 'pending') {
+                return spot;
+              }
+
+              if (rs === 'approved') {
+                return { ...spot, verified: true, reviewNote: undefined };
+              }
+
+              // rejected
+              return {
+                ...spot,
+                submissionStatus: 'local' as const,
+                verified: false,
+                reviewNote: entry?.review_note ?? undefined,
+              };
+            })
+          );
+        } catch (err) {
+          console.error('[PetMapStore][syncPendingSpotReviews] failed:', err);
+        } finally {
+          isSyncingReviewsRef.current = false;
+        }
+      },
     };
   }, [
     hasHydratedStorage,
@@ -635,6 +776,7 @@ export function PetMapProvider({ children }: PropsWithChildren) {
     showUserOnly,
     sortMode,
     feedbackRecords,
+    reviewNotifications,
     inboxReadAtByMessageId,
     formattedAddressBySpotId,
     systemSpots,

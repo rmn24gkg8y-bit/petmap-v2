@@ -40,22 +40,82 @@ export const PET_FRIENDLY_LEVEL_OPTIONS: PetFriendlyLevel[] = ['high', 'medium',
 
 export const PRICE_LEVEL_OPTIONS: PriceLevel[] = ['$', '$$', '$$$'];
 
-export const TAG_OPTIONS = [
-  '咖啡',
-  '宠物友好',
-  '室外座位',
+// ── Tag whitelist ─────────────────────────────────────────────────────────────
+// 前台唯一允许展示的 tag 集合。新建点位只能从这里选。
+
+export const TAG_WHITELIST = [
+  '草坪',
   '散步',
+  '安静',
+  '室外座位',
+  '宠物友好',
+  '分区活动',
+  '需预约',
+  '屋顶',
   '江边',
   '开阔空间',
-  '公园',
-  '休息',
-  '绿地',
-  '面包',
-  '街区',
-  '草坪',
-  '奔跑',
-  '户外',
-  '书店',
-  '安静',
-  '社区',
-];
+] as const;
+
+// Form 选项直接用白名单
+export const TAG_OPTIONS: string[] = [...TAG_WHITELIST];
+
+// ── Front-end tag normalization ───────────────────────────────────────────────
+
+// 已知真实点位的前台 tag 覆盖（Supabase 数据暂未更新前的兜底）
+const SPOT_TAG_OVERRIDES: Record<string, string[]> = {
+  '和平公园':             ['宠物友好', '分区活动', '散步', '开阔空间'],
+  '世纪公园宠物乐园':     ['宠物友好', '分区活动', '需预约', '草坪'],
+  '北外滩来福士·来福公园':['屋顶', '宠物友好', '散步', '开阔空间'],
+  '狗莉莉咖啡':          ['宠物友好', '安静', '室外座位', '散步'],
+  'AI PLAZA 西岸凤巢':   ['宠物友好', '开阔空间', '散步', '室外座位'],
+};
+
+// 旧 tag → 白名单 tag 的一一映射（不在此表且不在白名单里的直接丢弃）
+const TAG_LEGACY_REMAP: Record<string, string> = {
+  '绿地':       '草坪',
+  '奔跑':       '草坪',
+  '开放草坪':   '草坪',
+  '河边':       '江边',
+  '户外':       '散步',
+  '街区':       '散步',
+  '休息':       '安静',
+  '书店':       '安静',
+  '社区':       '安静',
+  '开阔':       '开阔空间',
+  '室外空间':   '开阔空间',
+  '开放空间':   '开阔空间',
+  '宠物乐园':   '分区活动',
+  '专属宠物乐园': '分区活动',
+  '可带入':     '宠物友好',
+  '人宠同桌':   '宠物友好',
+  '人宠共食':   '宠物友好',
+};
+
+const TAG_WHITELIST_SET = new Set<string>(TAG_WHITELIST);
+const TYPE_ONLY_TAGS_SET = new Set<string>(['公园', '咖啡', '商场']);
+
+/**
+ * 把任意 tags 数组归一化到白名单。
+ * 优先级：点位名字 override > 白名单直通 > legacy 映射 > 丢弃
+ */
+export function normalizeSpotTags(tags: string[], spotName?: string): string[] {
+  if (spotName) {
+    const override = SPOT_TAG_OVERRIDES[spotName];
+    if (override) {
+      return override.filter((tag) => TAG_WHITELIST_SET.has(tag));
+    }
+  }
+
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const tag of tags) {
+    const normalized = TAG_WHITELIST_SET.has(tag) ? tag : TAG_LEGACY_REMAP[tag];
+    if (normalized && !TYPE_ONLY_TAGS_SET.has(normalized) && !seen.has(normalized)) {
+      seen.add(normalized);
+      result.push(normalized);
+    }
+  }
+
+  return result;
+}
