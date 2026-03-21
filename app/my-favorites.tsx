@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   FlatList,
   Image,
   Pressable,
@@ -11,6 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
 import Svg, { Path } from 'react-native-svg';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -18,6 +20,7 @@ import HeatIcon from '@/assets/icons/heat-icon.svg';
 import SearchIcon from '@/assets/icons/search-icon.svg';
 import DogHero from '@/assets/illustrations/dog-hero.svg';
 import { SPOT_TYPE_LABELS } from '@/constants/spotFormOptions';
+import { EmptyStateCard } from '@/components/ui';
 import { usePetMapStore } from '@/store/petmap-store';
 import { formatDistance, getDistanceMeters } from '@/utils/distance';
 
@@ -54,6 +57,24 @@ function getDisplayAddress(spot: FavoriteSpot) {
     [spot.district, spot.addressHint].map((value) => value.trim()).filter(Boolean).join(' · ') ||
     '地址待补充'
   );
+}
+
+function getCardLocationLine(spot: FavoriteSpot) {
+  const district = spot.district.trim() || '未知区域';
+  const address = getDisplayAddress(spot);
+
+  if (address === '地址待补充') {
+    return district;
+  }
+
+  if (address.startsWith(district)) {
+    const trimmed = address.slice(district.length).replace(/^[·,\s，]+/, '').trim();
+    if (trimmed.length > 0) {
+      return `${district} · ${trimmed}`;
+    }
+  }
+
+  return `${district} · ${address}`;
 }
 
 function getSourceInfo(spot: FavoriteSpot): { label: string; kind: SourceKind } {
@@ -100,9 +121,8 @@ function FavoritesSpotCard({
 }) {
   const sourceInfo = getSourceInfo(spot);
   const sourceIcon = getSourceIcon(sourceInfo.kind);
-  const district = spot.district.trim() || '未知区域';
-  const address = getDisplayAddress(spot);
-  const visibleTags = spot.tags.slice(0, 4);
+  const locationLine = getCardLocationLine(spot);
+  const visibleTags = spot.tags.slice(0, 3);
   const typeColor = TYPE_BADGE_COLORS[spot.spotType] ?? TYPE_BADGE_COLORS.other;
   const typeTextColor = spot.spotType === 'hospital' ? '#303030' : '#FFFFFF';
 
@@ -170,12 +190,8 @@ function FavoritesSpotCard({
             </View>
 
             <View style={styles.addressRow}>
-              <Text style={styles.districtText} numberOfLines={1}>
-                {district}
-              </Text>
-              <Text style={styles.addressDot}>·</Text>
               <Text style={styles.addressDetailText} numberOfLines={1}>
-                {address}
+                {locationLine}
               </Text>
             </View>
 
@@ -204,9 +220,15 @@ function FavoritesSpotCard({
 
 export default function MyFavoritesScreen() {
   const insets = useSafeAreaInsets();
-  const { favoriteSpots, setSelectedSpot, userLoc } = usePetMapStore();
+  const { favoriteSpots, setSelectedSpot, userLoc, toggleFavorite } = usePetMapStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSourceFilter, setSelectedSourceFilter] = useState<FavoriteSourceFilter>('all');
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const swipeableRefs = useRef<Record<string, Swipeable | null>>({});
+  const openedSwipeableId = useRef<string | null>(null);
+  const snackbarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingUndoSpotIdRef = useRef<string | null>(null);
 
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
   const filteredFavoriteSpots = useMemo(() => {
@@ -226,9 +248,78 @@ export default function MyFavoritesScreen() {
   }, [favoriteSpots, normalizedQuery, selectedSourceFilter]);
 
   function handleSelectSpot(id: string) {
+    closeOpenedSwipeable();
     setSelectedSpot(id);
     router.navigate({ pathname: '/(tabs)', params: { openToHalf: '1' } });
   }
+
+  function handleRemoveFavorite(id: string, name: string) {
+    closeOpenedSwipeable();
+    Alert.alert('取消收藏', `将「${name}」从收藏中移除？`, [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '移除',
+        style: 'destructive',
+        onPress: () => {
+          toggleFavorite(id);
+          pendingUndoSpotIdRef.current = id;
+          showSnackbar('已移除');
+        },
+      },
+    ]);
+  }
+
+  function clearSnackbarTimer() {
+    if (!snackbarTimerRef.current) return;
+    clearTimeout(snackbarTimerRef.current);
+    snackbarTimerRef.current = null;
+  }
+
+  function showSnackbar(message: string) {
+    clearSnackbarTimer();
+    setSnackbarMessage(message);
+    setSnackbarVisible(true);
+    snackbarTimerRef.current = setTimeout(() => {
+      pendingUndoSpotIdRef.current = null;
+      setSnackbarVisible(false);
+      snackbarTimerRef.current = null;
+    }, 3200);
+  }
+
+  function handleUndoRemoveFavorite() {
+    const spotId = pendingUndoSpotIdRef.current;
+    if (!spotId) return;
+
+    clearSnackbarTimer();
+    toggleFavorite(spotId);
+    pendingUndoSpotIdRef.current = null;
+    setSnackbarVisible(false);
+  }
+
+  function setSwipeableRef(id: string, ref: Swipeable | null) {
+    swipeableRefs.current[id] = ref;
+  }
+
+  function closeOpenedSwipeable() {
+    const openedId = openedSwipeableId.current;
+    if (!openedId) return;
+    swipeableRefs.current[openedId]?.close();
+    openedSwipeableId.current = null;
+  }
+
+  function handleSwipeableWillOpen(id: string) {
+    const currentOpenedId = openedSwipeableId.current;
+    if (currentOpenedId && currentOpenedId !== id) {
+      swipeableRefs.current[currentOpenedId]?.close();
+    }
+    openedSwipeableId.current = id;
+  }
+
+  useEffect(() => {
+    return () => {
+      clearSnackbarTimer();
+    };
+  }, []);
 
   const sheetTop = insets.top + 222;
   const titleTop = insets.top + 80;
@@ -237,7 +328,7 @@ export default function MyFavoritesScreen() {
   const chipsTop = insets.top + 176;
 
   return (
-    <View style={styles.container}>
+    <GestureHandlerRootView style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
 
       <View style={styles.heroLayer}>
@@ -313,7 +404,10 @@ export default function MyFavoritesScreen() {
       <View style={[styles.contentSheet, { top: sheetTop, paddingBottom: insets.bottom }]}>
         {filteredFavoriteSpots.length === 0 ? (
           <View style={styles.emptyWrap}>
-            <Text style={styles.emptyText}>暂时还没有喜欢的地点呢</Text>
+            <EmptyStateCard
+              title={normalizedQuery.length > 0 || selectedSourceFilter !== 'all' ? '没有匹配结果' : '还没有收藏'}
+              description={normalizedQuery.length > 0 || selectedSourceFilter !== 'all' ? '试试清除搜索或切换分类' : '喜欢的地点可在地图上收藏'}
+            />
           </View>
         ) : (
           <FlatList
@@ -325,23 +419,66 @@ export default function MyFavoritesScreen() {
             scrollEventThrottle={16}
             contentContainerStyle={styles.listContent}
             ItemSeparatorComponent={() => <View style={styles.listSeparator} />}
+            onScrollBeginDrag={closeOpenedSwipeable}
             renderItem={({ item }) => {
               const distanceText = userLoc
                 ? formatDistance(getDistanceMeters(userLoc, { lat: item.lat, lng: item.lng })).replace(/\s+/g, '')
                 : '距离未知';
 
               return (
-                <FavoritesSpotCard
-                  spot={item}
-                  distanceText={distanceText}
-                  onPress={() => handleSelectSpot(item.id)}
-                />
+                <View style={styles.swipeRow}>
+                  <Swipeable
+                    ref={(ref) => setSwipeableRef(item.id, ref)}
+                    friction={2.1}
+                    rightThreshold={38}
+                    overshootRight={false}
+                    onSwipeableWillOpen={() => handleSwipeableWillOpen(item.id)}
+                    onSwipeableWillClose={() => {
+                      if (openedSwipeableId.current === item.id) {
+                        openedSwipeableId.current = null;
+                      }
+                    }}
+                    renderRightActions={() => (
+                      <View style={styles.swipeActionRail}>
+                        <Pressable
+                          style={({ pressed }) => [
+                            styles.swipeActionButton,
+                            pressed && styles.swipeActionButtonPressed,
+                          ]}
+                          onPress={() => handleRemoveFavorite(item.id, item.name)}>
+                          <Text style={styles.swipeActionText}>移除</Text>
+                        </Pressable>
+                      </View>
+                    )}>
+                    <FavoritesSpotCard
+                      spot={item}
+                      distanceText={distanceText}
+                      onPress={() => handleSelectSpot(item.id)}
+                    />
+                  </Swipeable>
+                </View>
               );
             }}
           />
         )}
       </View>
-    </View>
+
+      {snackbarVisible ? (
+        <View style={[styles.snackbarWrap, { bottom: insets.bottom + 16 }]}>
+          <View style={styles.snackbar}>
+            <Text style={styles.snackbarText}>{snackbarMessage}</Text>
+            <Pressable
+              onPress={handleUndoRemoveFavorite}
+              style={({ pressed }) => [
+                styles.snackbarActionButton,
+                pressed ? styles.snackbarActionButtonPressed : null,
+              ]}>
+              <Text style={styles.snackbarActionText}>撤销</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+    </GestureHandlerRootView>
   );
 }
 
@@ -462,18 +599,39 @@ const styles = StyleSheet.create({
   listSeparator: {
     height: 17,
   },
-  emptyWrap: {
+  swipeRow: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: '#F5F1EC',
+  },
+  swipeActionRail: {
+    width: 88,
+    height: '100%',
+    paddingVertical: 8,
+    paddingLeft: 8,
+    justifyContent: 'center',
+  },
+  swipeActionButton: {
     flex: 1,
+    backgroundColor: '#ED8422',
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 28,
   },
-  emptyText: {
-    color: '#404040',
-    fontSize: 20,
+  swipeActionText: {
+    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: '700',
-    lineHeight: 28,
-    textAlign: 'center',
+  },
+  swipeActionButtonPressed: {
+    opacity: 0.82,
+    transform: [{ scale: 0.97 }],
+  },
+  emptyWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 20,
   },
   spotCard: {
     width: '100%',
@@ -581,7 +739,7 @@ const styles = StyleSheet.create({
   sourceText: {
     fontSize: 10,
     lineHeight: 10,
-    fontWeight: '900',
+    fontWeight: '700',
     color: '#ECECEC',
   },
   sourceTextPlatform: {
@@ -666,5 +824,44 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '500',
     color: 'rgba(244,244,244,0.95)',
+  },
+  snackbarWrap: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    alignItems: 'center',
+    zIndex: 40,
+  },
+  snackbar: {
+    minHeight: 46,
+    alignSelf: 'stretch',
+    borderRadius: 14,
+    backgroundColor: 'rgba(28,28,30,0.94)',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  snackbarText: {
+    color: '#F8F8F8',
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+  },
+  snackbarActionButton: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  snackbarActionButtonPressed: {
+    opacity: 0.82,
+  },
+  snackbarActionText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

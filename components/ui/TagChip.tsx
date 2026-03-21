@@ -25,7 +25,13 @@ export function TagChip({ label, active = false, onPress, compact = false }: Tag
     return content;
   }
 
-  return <Pressable onPress={onPress}>{content}</Pressable>;
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => (pressed ? styles.pressed : undefined)}>
+      {content}
+    </Pressable>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -59,5 +65,8 @@ const styles = StyleSheet.create({
   inactiveText: {
     fontSize: 12,
     color: theme.colors.textSecondary,
+  },
+  pressed: {
+    opacity: 0.80,
   },
 });

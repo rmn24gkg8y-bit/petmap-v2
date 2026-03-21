@@ -14,6 +14,7 @@ import {
 import Svg, { Path } from 'react-native-svg';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { submitFeedbackToSupabase } from '@/repo/feedbackSubmissionRepo';
 import { usePetMapStore } from '@/store/petmap-store';
 import type { FeedbackType as StoreFeedbackType, InboxContextType } from '@/types/inbox';
 
@@ -83,17 +84,20 @@ export default function ReportLocationScreen() {
   const [selectedType, setSelectedType] = useState<LocalFeedbackType>('location');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const currentType = FEEDBACK_TYPES.find((t) => t.key === selectedType)!;
 
-  function handleSubmit() {
+  async function handleSubmit() {
     if (!title.trim() || !content.trim()) {
       Alert.alert('提示', '反馈标题和内容不能为空，请补充后再提交。');
       return;
     }
 
-    const contextType: InboxContextType = hasSpotContext ? 'spot' : 'none';
+    setIsSubmitting(true);
 
+    // 1. Write locally first (always)
+    const contextType: InboxContextType = hasSpotContext ? 'spot' : 'none';
     addFeedbackRecord({
       feedbackType: currentType.storeType,
       title: title.trim(),
@@ -103,15 +107,35 @@ export default function ReportLocationScreen() {
       spotName: hasSpotContext ? spotName : undefined,
     });
 
-    Alert.alert('提交成功', '反馈已提交，感谢你的建议！', [
-      {
-        text: '好的',
-        onPress: () => {
-          setTitle('');
-          setContent('');
+    // 2. Submit to Supabase
+    try {
+      await submitFeedbackToSupabase({
+        feedback_type: currentType.storeType,
+        title: title.trim(),
+        content: content.trim(),
+        spot_id: hasSpotContext ? spotId : null,
+        spot_name: hasSpotContext ? spotName : null,
+        district: null,
+        address: spotAddress || null,
+        app_section: hasSpotContext ? 'map_spot_detail' : 'me_feedback',
+        status: 'new',
+      });
+
+      setIsSubmitting(false);
+      Alert.alert('提交成功', '反馈提交成功，我们会尽快查看。', [
+        {
+          text: '好的',
+          onPress: () => {
+            setTitle('');
+            setContent('');
+          },
         },
-      },
-    ]);
+      ]);
+    } catch (err) {
+      setIsSubmitting(false);
+      console.error('[FeedbackSubmit] Supabase error:', err);
+      Alert.alert('提交失败', '提交失败，请稍后重试。');
+    }
   }
 
   return (
@@ -237,11 +261,14 @@ export default function ReportLocationScreen() {
           {/* Submit */}
           <Pressable
             onPress={handleSubmit}
+            disabled={isSubmitting}
             style={({ pressed }) => [
               styles.submitButton,
-              pressed && styles.submitButtonPressed,
+              (pressed || isSubmitting) && styles.submitButtonPressed,
             ]}>
-            <Text style={styles.submitButtonText}>提交反馈</Text>
+            <Text style={styles.submitButtonText}>
+              {isSubmitting ? '提交中...' : '提交反馈'}
+            </Text>
           </Pressable>
 
         </ScrollView>

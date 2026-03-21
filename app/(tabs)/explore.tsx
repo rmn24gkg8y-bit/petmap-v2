@@ -19,15 +19,15 @@ import MessageSquareIcon from '@/assets/icons/message-square.svg';
 import SearchIcon from '@/assets/icons/search-icon.svg';
 import DogHero from '@/assets/illustrations/dog-hero.svg';
 import {
+  normalizeSpotTags,
   SPOT_TYPE_LABELS,
   SPOT_TYPE_OPTIONS,
 } from '@/constants/spotFormOptions';
 import { EmptyStateCard, PrimaryButton } from '@/components/ui';
-import { theme } from '@/constants/theme';
 import { usePetMapStore } from '@/store/petmap-store';
 import { formatDistance, getDistanceMeters } from '@/utils/distance';
 
-const HERO_TAGS = ['全部', '安静', '草坪', '江边', '奔跑'];
+const HERO_TAGS = ['全部', '安静', '草坪', '江边', '散步'];
 const SORT_OPTIONS = [
   { label: '热门', value: 'popular' as const },
   { label: '名称', value: 'name' as const },
@@ -45,43 +45,69 @@ const TYPE_BADGE_COLORS = {
 
 type ExploreSpot = ReturnType<typeof usePetMapStore>['filteredSpots'][number];
 type ExploreMenu = 'sort' | 'district' | 'type' | null;
-type SourceKind = 'platform' | 'user' | 'local';
 
-function getDisplayAddress(spot: ExploreSpot) {
-  return spot.addressHint?.trim() || spot.formattedAddress?.trim() || '地址待补充';
+function stripLeadingDistrict(detail: string, district: string) {
+  const normalizedDetail = detail.trim();
+  const normalizedDistrict = district.trim();
+
+  if (!normalizedDetail || !normalizedDistrict || !normalizedDetail.startsWith(normalizedDistrict)) {
+    return normalizedDetail;
+  }
+
+  const withoutDistrict = normalizedDetail.slice(normalizedDistrict.length).replace(/^[·,\s，]+/, '').trim();
+
+  return withoutDistrict || normalizedDetail;
 }
 
-function getSourceInfo(spot: ExploreSpot): { label: string; kind: SourceKind } {
-  if (spot.source !== 'user') {
-    return {
-      label: '平台整理',
-      kind: 'platform',
-    };
-  }
+function getDisplayAddressDetail(spot: ExploreSpot) {
+  const district = spot.district.trim() || '未知区域';
+  const primaryAddress = spot.formattedAddress?.trim() || spot.addressHint?.trim() || '地址待补充';
 
-  if (spot.submissionStatus === 'local') {
-    return {
-      label: '本地保存',
-      kind: 'local',
-    };
-  }
-
-  return {
-    label: '用户提供',
-    kind: 'user',
-  };
+  return stripLeadingDistrict(primaryAddress, district) || '地址待补充';
 }
 
-function getSourceIcon(kind: SourceKind) {
-  if (kind === 'platform') {
-    return { name: 'layers-outline' as const, color: '#ED8422' };
+function getCardLocationLine(spot: ExploreSpot) {
+  const district = spot.district.trim() || '未知区域';
+  const detail = getDisplayAddressDetail(spot);
+
+  if (detail === '地址待补充') {
+    return district;
   }
 
-  if (kind === 'local') {
-    return { name: 'download-outline' as const, color: '#2F2F2F' };
+  return `${district} · ${detail}`;
+}
+
+const EXPLORE_TYPE_BADGE_LABEL_BY_SPOT_TYPE: Partial<
+  Record<ExploreSpot['spotType'], string | null>
+> = {
+  park: '公园',
+  cafe: '咖啡',
+  indoor: '商场',
+  hospital: null,
+  store: null,
+  other: null,
+};
+
+const OTHER_BADGE_TAG_PRIORITY = ['屋顶', '江边', '开阔空间'] as const;
+
+function getExploreCardBadgeLabel(spot: ExploreSpot, normalizedTags: string[]) {
+  const typeLabel = EXPLORE_TYPE_BADGE_LABEL_BY_SPOT_TYPE[spot.spotType];
+
+  if (typeof typeLabel === 'string' && typeLabel.trim()) {
+    return typeLabel;
   }
 
-  return { name: 'person-outline' as const, color: '#67A735' };
+  if (spot.spotType !== 'other') {
+    return null;
+  }
+
+  for (const tag of OTHER_BADGE_TAG_PRIORITY) {
+    if (normalizedTags.includes(tag)) {
+      return tag;
+    }
+  }
+
+  return null;
 }
 
 function ExploreSpotCard({
@@ -93,107 +119,97 @@ function ExploreSpotCard({
   distanceText: string;
   onPress: () => void;
 }) {
-  const sourceInfo = getSourceInfo(spot);
-  const sourceIcon = getSourceIcon(sourceInfo.kind);
-  const district = spot.district.trim() || '未知区域';
-  const address = getDisplayAddress(spot);
-  const visibleTags = spot.tags.slice(0, 4);
+  const locationLine = getCardLocationLine(spot);
+  const normalizedTags = normalizeSpotTags(spot.tags, spot.name);
+  const typeBadgeLabel = getExploreCardBadgeLabel(spot, normalizedTags);
+  const visibleTags = normalizedTags
+    .filter((tag) => tag !== typeBadgeLabel)
+    .slice(0, 3);
   const typeColor = TYPE_BADGE_COLORS[spot.spotType] ?? TYPE_BADGE_COLORS.other;
   const typeTextColor = spot.spotType === 'hospital' ? '#303030' : '#FFFFFF';
 
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.spotCard, pressed && styles.spotCardPressed]}>
-      <View style={styles.spotMediaLayer}>
-        {spot.photoUris?.[0] ? (
-          <Image source={{ uri: spot.photoUris[0] }} style={styles.spotImage} />
-        ) : (
-          <View style={styles.spotImagePlaceholder}>
-            <View style={styles.spotPlaceholderGlowA} />
-            <View style={styles.spotPlaceholderGlowB} />
-            <View style={styles.spotPlaceholderContent}>
-              <View style={styles.spotPlaceholderIconWrap}>
-                <Ionicons name="image-outline" size={16} color="#6A6863" />
+    <View style={styles.spotCardShadow}>
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [styles.spotCard, pressed && styles.spotCardPressed]}>
+        <View style={styles.spotMediaLayer}>
+          {spot.photoUris?.[0] ? (
+            <Image source={{ uri: spot.photoUris[0] }} style={styles.spotImage} />
+          ) : (
+            <View style={styles.spotImagePlaceholder}>
+              <View style={styles.spotPlaceholderGlowA} />
+              <View style={styles.spotPlaceholderGlowB} />
+              <View style={styles.spotPlaceholderContent}>
+                <View style={styles.spotPlaceholderIconWrap}>
+                  <Ionicons name="image-outline" size={16} color="#6A6863" />
+                </View>
+                <Text style={styles.spotPlaceholderTitle}>PetMap Spot</Text>
+                <Text style={styles.spotPlaceholderSubtitle}>地点图片待补充</Text>
               </View>
-              <Text style={styles.spotPlaceholderTitle}>PetMap Spot</Text>
-              <Text style={styles.spotPlaceholderSubtitle}>暂无图片</Text>
             </View>
-          </View>
-        )}
-      </View>
-
-      <LinearGradient
-        pointerEvents="none"
-        colors={[
-          'rgba(0,0,0,0)',
-          'rgba(0,0,0,0.12)',
-          'rgba(0,0,0,0.3)',
-          'rgba(0,0,0,0.6)',
-        ]}
-        locations={[0, 0.44, 0.72, 1]}
-        style={styles.spotGradientLayer}
-      />
-
-      <View style={styles.spotCardContent}>
-        <View style={[styles.typeBadge, { backgroundColor: typeColor }]}>
-          <Text style={[styles.typeBadgeText, { color: typeTextColor }]}>{SPOT_TYPE_LABELS[spot.spotType]}</Text>
+          )}
         </View>
 
-        <View style={styles.spotBottomContent}>
-          <View>
-            <View style={styles.sourceRow}>
-              <Ionicons name={sourceIcon.name} size={11} color={sourceIcon.color} />
-              <Text
-                style={[
-                  styles.sourceText,
-                  sourceInfo.kind === 'platform' ? styles.sourceTextPlatform : null,
-                  sourceInfo.kind === 'user' ? styles.sourceTextUser : null,
-                  sourceInfo.kind === 'local' ? styles.sourceTextLocal : null,
-                ]}>
-                {sourceInfo.label}
-              </Text>
-            </View>
+        <LinearGradient
+          pointerEvents="none"
+          colors={[
+            'rgba(0,0,0,0)',
+            'rgba(0,0,0,0.12)',
+            'rgba(0,0,0,0.3)',
+            'rgba(0,0,0,0.6)',
+          ]}
+          locations={[0, 0.44, 0.72, 1]}
+          style={styles.spotGradientLayer}
+        />
 
-            <View style={styles.titleRow}>
-              <Text style={styles.spotTitle} numberOfLines={1}>
-                {spot.name}
-              </Text>
-              <Text style={styles.distanceText} numberOfLines={1}>
-                {distanceText}
-              </Text>
-            </View>
+        <View style={styles.spotCardContent}>
+          <View style={styles.typeBadgeSlot}>
+            {typeBadgeLabel ? (
+              <View style={[styles.typeBadge, { backgroundColor: typeColor }]}>
+                <Text style={[styles.typeBadgeText, { color: typeTextColor }]}>{typeBadgeLabel}</Text>
+              </View>
+            ) : null}
+          </View>
 
-            <View style={styles.addressRow}>
-              <Text style={styles.districtText} numberOfLines={1}>
-                {district}
-              </Text>
-              <Text style={styles.addressDot}>·</Text>
-              <Text style={styles.addressDetailText} numberOfLines={1}>
-                {address}
-              </Text>
-            </View>
+          <View style={styles.spotBottomContent}>
+            <View>
+              <View style={styles.titleRow}>
+                <Text style={styles.spotTitle} numberOfLines={1}>
+                  {spot.name}
+                </Text>
+                <Text style={styles.distanceText} numberOfLines={1}>
+                  {distanceText}
+                </Text>
+              </View>
 
-            <View style={styles.tagsRow}>
-              {visibleTags.length > 0
-                ? visibleTags.map((tag) => (
+              <View style={styles.addressRow}>
+                <Text style={styles.addressDetailText} numberOfLines={1}>
+                  {locationLine}
+                </Text>
+              </View>
+
+              {visibleTags.length > 0 ? (
+                <View style={styles.tagsRow}>
+                  {visibleTags.map((tag) => (
                     <View key={`${spot.id}-${tag}`} style={styles.tagPill}>
                       <Text style={styles.tagText} numberOfLines={1}>
                         {tag}
                       </Text>
                     </View>
-                  ))
-                : null}
+                  ))}
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.heatRow}>
+              <HeatIcon width={13} height={13} />
+              <Text style={styles.heatText}>{spot.votes}</Text>
             </View>
           </View>
-
-          <View style={styles.heatRow}>
-            <HeatIcon width={13} height={13} />
-            <Text style={styles.heatText}>{spot.votes}</Text>
-          </View>
         </View>
-      </View>
-    </Pressable>
+      </Pressable>
+    </View>
   );
 }
 
@@ -218,14 +234,15 @@ export default function ExploreScreen() {
   const [openMenu, setOpenMenu] = useState<ExploreMenu>(null);
   const [selectedDistrict, setSelectedDistrict] = useState<string>('全部');
   const [hasPickedSort, setHasPickedSort] = useState(false);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
 
   const districtOptions = useMemo(() => {
     const values = Array.from(
       new Set(
         filteredSpots
           .map((spot) => spot.district.trim())
-          .filter(Boolean)
-      )
+          .filter(Boolean),
+      ),
     ).slice(0, 10);
 
     return ['全部', ...values];
@@ -238,6 +255,7 @@ export default function ExploreScreen() {
 
     return filteredSpots.filter((spot) => spot.district.trim() === selectedDistrict);
   }, [filteredSpots, selectedDistrict]);
+
   const selectedSortLabel =
     SORT_OPTIONS.find((option) => option.value === sortMode)?.label ?? '热门';
   const selectedTypeLabel = selectedSpotType ? SPOT_TYPE_LABELS[selectedSpotType] : '';
@@ -266,17 +284,26 @@ export default function ExploreScreen() {
 
   return (
     <View style={styles.container}>
+      {/* ── Hero ─────────────────────────────────────────────── */}
       <View style={[styles.hero, { paddingTop: heroTopPadding }]}>
-        <DogHero width={82} height={108} style={[styles.heroDog, { top: dogTop }]} />
+        <LinearGradient
+          colors={['#F59528', '#E07215', '#D46C10']}
+          start={{ x: 0.05, y: 0 }}
+          end={{ x: 0.95, y: 1 }}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+
+        <DogHero width={76} height={100} style={[styles.heroDog, { top: dogTop }]} />
 
         <Pressable
-          style={[styles.messageButton, { top: messageButtonTop }]}
+          style={({ pressed }) => [styles.messageButton, { top: messageButtonTop }, pressed && styles.messageButtonPressed]}
           onPress={() => router.push('/inbox')}>
           <MessageSquareIcon width={18} height={18} />
         </Pressable>
 
         <View style={styles.heroContent}>
-          <View style={styles.searchBoxWrap}>
+          <View style={[styles.searchBoxWrap, isSearchFocused && styles.searchBoxFocused]}>
             <SearchIcon width={16} height={16} />
             <TextInput
               value={searchQuery}
@@ -284,7 +311,11 @@ export default function ExploreScreen() {
               placeholder="搜索地点、区域、标签"
               placeholderTextColor="#6A6A6A"
               style={styles.searchInput}
-              onFocus={() => setOpenMenu(null)}
+              onFocus={() => {
+                setOpenMenu(null);
+                setIsSearchFocused(true);
+              }}
+              onBlur={() => setIsSearchFocused(false)}
             />
           </View>
 
@@ -299,7 +330,7 @@ export default function ExploreScreen() {
                 <Pressable
                   key={tag}
                   onPress={() => handleHeroTagPress(tag)}
-                  style={[styles.heroChip, isActive ? styles.heroChipActive : styles.heroChipDefault]}>
+                  style={({ pressed }) => [styles.heroChip, isActive ? styles.heroChipActive : styles.heroChipDefault, pressed && styles.heroChipPressed]}>
                   <Text style={[styles.heroChipText, isActive ? styles.heroChipTextActive : styles.heroChipTextDefault]}>
                     {tag}
                   </Text>
@@ -310,31 +341,32 @@ export default function ExploreScreen() {
         </View>
       </View>
 
+      {/* ── Content Sheet ─────────────────────────────────────── */}
       <View style={styles.contentSheet}>
         <View style={styles.selectorWrap}>
           <Pressable
             onPress={() => setOpenMenu((current) => (current === 'sort' ? null : 'sort'))}
-            style={styles.selectorButton}>
+            style={({ pressed }) => [styles.selectorButton, pressed && styles.selectorButtonPressed]}>
             <Text style={styles.selectorText}>{sortSelectorLabel}</Text>
-            <Ionicons name="chevron-down" size={13} color="#505050" />
+            <Ionicons name="chevron-down" size={13} color="#8A7A6A" />
           </Pressable>
 
           <View style={styles.selectorDivider} />
 
           <Pressable
             onPress={() => setOpenMenu((current) => (current === 'district' ? null : 'district'))}
-            style={styles.selectorButton}>
+            style={({ pressed }) => [styles.selectorButton, pressed && styles.selectorButtonPressed]}>
             <Text style={styles.selectorText}>{districtSelectorLabel}</Text>
-            <Ionicons name="chevron-down" size={13} color="#505050" />
+            <Ionicons name="chevron-down" size={13} color="#8A7A6A" />
           </Pressable>
 
           <View style={styles.selectorDivider} />
 
           <Pressable
             onPress={() => setOpenMenu((current) => (current === 'type' ? null : 'type'))}
-            style={styles.selectorButton}>
+            style={({ pressed }) => [styles.selectorButton, pressed && styles.selectorButtonPressed]}>
             <Text style={styles.selectorText}>{typeSelectorLabel}</Text>
-            <Ionicons name="chevron-down" size={13} color="#505050" />
+            <Ionicons name="chevron-down" size={13} color="#8A7A6A" />
           </Pressable>
 
           {openMenu === 'sort' ? (
@@ -347,7 +379,7 @@ export default function ExploreScreen() {
                     setHasPickedSort(true);
                     setOpenMenu(null);
                   }}
-                  style={styles.dropdownItem}>
+                  style={({ pressed }) => [styles.dropdownItem, pressed && styles.dropdownItemPressed]}>
                   <Text style={styles.dropdownItemText}>{option.label}</Text>
                 </Pressable>
               ))}
@@ -363,7 +395,7 @@ export default function ExploreScreen() {
                     setSelectedDistrict(district);
                     setOpenMenu(null);
                   }}
-                  style={styles.dropdownItem}>
+                  style={({ pressed }) => [styles.dropdownItem, pressed && styles.dropdownItemPressed]}>
                   <Text style={styles.dropdownItemText} numberOfLines={1}>
                     {district}
                   </Text>
@@ -379,7 +411,7 @@ export default function ExploreScreen() {
                   setSelectedSpotType(null);
                   setOpenMenu(null);
                 }}
-                style={styles.dropdownItem}>
+                style={({ pressed }) => [styles.dropdownItem, pressed && styles.dropdownItemPressed]}>
                 <Text style={styles.dropdownItemText}>全部</Text>
               </Pressable>
 
@@ -390,7 +422,7 @@ export default function ExploreScreen() {
                     setSelectedSpotType(spotType);
                     setOpenMenu(null);
                   }}
-                  style={styles.dropdownItem}>
+                  style={({ pressed }) => [styles.dropdownItem, pressed && styles.dropdownItemPressed]}>
                   <Text style={styles.dropdownItemText}>{SPOT_TYPE_LABELS[spotType]}</Text>
                 </Pressable>
               ))}
@@ -404,7 +436,7 @@ export default function ExploreScreen() {
           showsVerticalScrollIndicator={false}
           decelerationRate="normal"
           scrollEventThrottle={16}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 108 }]}
           ListEmptyComponent={
             <EmptyStateCard
               title="暂时没有符合条件的地点"
@@ -446,6 +478,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#ED8422',
   },
+
+  // ── Hero ──────────────────────────────────────────────────────────
   hero: {
     backgroundColor: '#ED8422',
     paddingBottom: 5,
@@ -458,13 +492,18 @@ const styles = StyleSheet.create({
   messageButton: {
     position: 'absolute',
     right: 16,
-    top: 12,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 3,
+  },
+  messageButtonPressed: {
+    opacity: 0.72,
   },
   heroContent: {
     marginTop: 9,
@@ -474,13 +513,23 @@ const styles = StyleSheet.create({
   },
   searchBoxWrap: {
     height: 38,
-    borderRadius: 10,
+    borderRadius: 12,
     backgroundColor: '#FFFEFF',
     paddingVertical: 8,
     paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    shadowColor: '#000000',
+    shadowOpacity: 0.06,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    elevation: 2,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  searchBoxFocused: {
+    borderColor: 'rgba(237,132,34,0.45)',
   },
   searchInput: {
     flex: 1,
@@ -496,49 +545,62 @@ const styles = StyleSheet.create({
   },
   heroChip: {
     height: 28,
-    minWidth: 65,
+    minWidth: 48,
     borderRadius: 999,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Active chip: solid white, orange text — clearly selected
   heroChipActive: {
-    backgroundColor: '#ED8422',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  heroChipDefault: {
     backgroundColor: '#FFFEFF',
     borderWidth: 0,
   },
+  // Default chip: subtle semi-transparent, recedes into orange bg
+  heroChipDefault: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.32)',
+  },
   heroChipText: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
   },
   heroChipTextActive: {
-    color: '#F4F4F4',
+    color: '#ED8422',
+    fontWeight: '700',
   },
   heroChipTextDefault: {
-    color: '#ED8422',
+    color: 'rgba(255,255,255,0.88)',
+    fontWeight: '500',
   },
+  heroChipPressed: {
+    opacity: 0.72,
+  },
+
+  // ── Content Sheet ─────────────────────────────────────────────────
   contentSheet: {
     flex: 1,
-    marginTop: 4,
-    backgroundColor: '#FFFEFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    marginTop: 0,
+    backgroundColor: '#FFF8F2',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     paddingTop: 12,
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
   },
+
+  // ── Selector bar ──────────────────────────────────────────────────
   selectorWrap: {
     position: 'relative',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    paddingHorizontal: 10,
-    paddingTop: 2,
-    paddingBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 4,
+    backgroundColor: '#F0EAE2',
+    borderRadius: 12,
   },
   selectorButton: {
     width: '28%',
@@ -546,29 +608,37 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: 3,
+    paddingVertical: 4,
+  },
+  selectorButtonPressed: {
+    opacity: 0.65,
   },
   selectorText: {
     fontSize: 12,
-    fontWeight: '500',
-    color: '#4C4C4C',
+    fontWeight: '600',
+    color: '#6B5A48',
     textAlign: 'center',
   },
   selectorDivider: {
     width: 1,
     height: 14,
-    backgroundColor: '#E6E6E6',
+    backgroundColor: '#DDD0C4',
   },
   dropdownMenu: {
     position: 'absolute',
-    top: 34,
+    top: 38,
     width: '31%',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E5E5',
-    backgroundColor: '#FFFFFF',
+    borderColor: '#E8E0D8',
+    backgroundColor: '#FFFEFF',
     padding: 6,
     zIndex: 20,
-    ...theme.shadows.card,
+    shadowColor: '#C97010',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 3,
   },
   dropdownLeft: {
     left: 0,
@@ -584,24 +654,41 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 8,
   },
+  dropdownItemPressed: {
+    backgroundColor: '#F5EDE4',
+  },
   dropdownItemText: {
     fontSize: 12,
     color: '#303030',
   },
+
+  // ── List ──────────────────────────────────────────────────────────
   listContent: {
     paddingTop: 6,
-    paddingBottom: theme.spacing.xl + 20,
-    gap: 10,
+    gap: 12,
   },
+
+  // ── Spot card shadow wrapper ───────────────────────────────────────
+  spotCardShadow: {
+    borderRadius: 20,
+    backgroundColor: '#DCCAB4',
+    shadowColor: '#B87030',
+    shadowOpacity: 0.14,
+    shadowOffset: { width: 0, height: 5 },
+    shadowRadius: 14,
+    elevation: 4,
+  },
+
+  // ── Spot card ─────────────────────────────────────────────────────
   spotCard: {
     width: '100%',
     height: 168,
     borderRadius: 20,
     overflow: 'hidden',
-    backgroundColor: '#D7D2CB',
+    backgroundColor: '#DCCAB4',
   },
   spotCardPressed: {
-    opacity: 0.88,
+    opacity: 0.84,
   },
   spotMediaLayer: {
     ...StyleSheet.absoluteFillObject,
@@ -614,7 +701,7 @@ const styles = StyleSheet.create({
   spotImagePlaceholder: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#D8D2C8',
+    backgroundColor: '#DCCAB4',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -626,7 +713,7 @@ const styles = StyleSheet.create({
     width: 130,
     height: 130,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.22)',
   },
   spotPlaceholderGlowB: {
     position: 'absolute',
@@ -635,7 +722,7 @@ const styles = StyleSheet.create({
     width: 116,
     height: 116,
     borderRadius: 999,
-    backgroundColor: 'rgba(118,112,102,0.2)',
+    backgroundColor: 'rgba(180,120,60,0.14)',
   },
   spotPlaceholderContent: {
     alignItems: 'center',
@@ -644,7 +731,7 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: 'rgba(255,255,255,0.6)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -681,6 +768,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.26)',
   },
+  typeBadgeSlot: {
+    minHeight: 21,
+    justifyContent: 'flex-start',
+  },
   typeBadgeText: {
     fontSize: 11,
     fontWeight: '800',
@@ -690,29 +781,8 @@ const styles = StyleSheet.create({
     position: 'relative',
     paddingRight: 52,
   },
-  sourceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 1,
-  },
-  sourceText: {
-    fontSize: 10,
-    lineHeight: 10,
-    fontWeight: '900',
-    color: '#ECECEC',
-  },
-  sourceTextPlatform: {
-    color: '#ED8422',
-  },
-  sourceTextUser: {
-    color: '#67A735',
-  },
-  sourceTextLocal: {
-    color: '#2F2F2F',
-  },
   titleRow: {
-    marginTop: 5,
+    marginTop: 2,
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',

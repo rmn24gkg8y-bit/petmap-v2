@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import type { FeedbackRecord } from '@/types/inbox';
+import type { FeedbackRecord, SpotReviewNotification } from '@/types/inbox';
 import type { Spot } from '@/types/spot';
 
 const FAVORITE_IDS_KEY = 'petmap.favoriteIds';
@@ -9,6 +9,8 @@ const USER_CREATED_SPOTS_KEY = 'petmap.userCreatedSpots';
 const FORMATTED_ADDRESS_MAP_KEY = 'petmap.formattedAddressBySpotId';
 const FEEDBACK_RECORDS_KEY = 'petmap.feedbackRecords';
 const INBOX_READ_AT_BY_MESSAGE_ID_KEY = 'petmap.inboxReadAtByMessageId';
+const REVIEW_NOTIFICATIONS_KEY = 'petmap.reviewNotifications';
+const NOTIFIED_REVIEW_STATE_KEY = 'petmap.notifiedReviewStateBySpotId';
 
 function parseStringArray(value: string | null): string[] {
   if (!value) {
@@ -145,6 +147,7 @@ function parseSpot(value: unknown): Spot | null {
         ? (spot.photoUris as string[])
         : undefined,
     formattedAddress: typeof spot.formattedAddress === 'string' ? spot.formattedAddress : undefined,
+    reviewNote: typeof spot.reviewNote === 'string' ? spot.reviewNote : undefined,
   };
 }
 
@@ -317,6 +320,106 @@ export async function saveInboxReadAtByMessageId(value: Record<string, string>) 
     await AsyncStorage.setItem(INBOX_READ_AT_BY_MESSAGE_ID_KEY, JSON.stringify(value));
   } catch {
     // Ignore persistence errors for now and keep the in-memory state usable.
+  }
+}
+
+// ── Review notifications ─────────────────────────────────────────────────────
+
+function parseReviewNotification(value: unknown): SpotReviewNotification | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const r = value as Record<string, unknown>;
+
+  if (
+    typeof r.id !== 'string' ||
+    r.sourceType !== 'review' ||
+    (r.reviewResult !== 'approved' && r.reviewResult !== 'rejected') ||
+    typeof r.title !== 'string' ||
+    typeof r.content !== 'string' ||
+    typeof r.createdAt !== 'string' ||
+    typeof r.spotId !== 'string' ||
+    typeof r.spotName !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    id: r.id,
+    sourceType: 'review',
+    reviewResult: r.reviewResult as 'approved' | 'rejected',
+    title: r.title,
+    content: r.content,
+    createdAt: r.createdAt,
+    spotId: r.spotId,
+    spotName: r.spotName,
+  };
+}
+
+export async function loadReviewNotifications(): Promise<SpotReviewNotification[]> {
+  try {
+    const value = await AsyncStorage.getItem(REVIEW_NOTIFICATIONS_KEY);
+
+    if (!value) {
+      return [];
+    }
+
+    const parsed = JSON.parse(value);
+
+    return Array.isArray(parsed)
+      ? parsed.map(parseReviewNotification).filter((x): x is SpotReviewNotification => x !== null)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveReviewNotifications(value: SpotReviewNotification[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(REVIEW_NOTIFICATIONS_KEY, JSON.stringify(value));
+  } catch {
+    // Ignore persistence errors.
+  }
+}
+
+export async function loadNotifiedReviewStateBySpotId(): Promise<
+  Record<string, 'approved' | 'rejected'>
+> {
+  try {
+    const value = await AsyncStorage.getItem(NOTIFIED_REVIEW_STATE_KEY);
+
+    if (!value) {
+      return {};
+    }
+
+    const parsed = JSON.parse(value);
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+
+    const result: Record<string, 'approved' | 'rejected'> = {};
+
+    for (const [k, v] of Object.entries(parsed)) {
+      if (typeof k === 'string' && (v === 'approved' || v === 'rejected')) {
+        result[k] = v;
+      }
+    }
+
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+export async function saveNotifiedReviewStateBySpotId(
+  value: Record<string, 'approved' | 'rejected'>,
+): Promise<void> {
+  try {
+    await AsyncStorage.setItem(NOTIFIED_REVIEW_STATE_KEY, JSON.stringify(value));
+  } catch {
+    // Ignore persistence errors.
   }
 }
 

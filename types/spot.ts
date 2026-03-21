@@ -24,4 +24,5 @@ export type Spot = {
   merchantStatus?: MerchantStatus;
   photoUris?: string[];
   formattedAddress?: string;
+  reviewNote?: string;
 };
